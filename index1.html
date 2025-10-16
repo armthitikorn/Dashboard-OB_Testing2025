@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>แดชบอร์ดผลการสอบ</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+    const supabase = createClient(
+      'https://wzwyotzzxycqfwercakh.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno'
+    );
+
+    async function fetchData() {
+      const email = document.getElementById("emailInput").value.trim();
+      const date = document.getElementById("dateInput").value.trim();
+
+      // ดึงข้อมูลทั้งหมด รวมถึงคอลัมน์ 'name'
+      const { data: quizResults } = await supabase.from("quiz_results").select("*");
+      const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*");
+
+      const filteredQuiz = quizResults.filter(r =>
+        (!email || r.user_email.includes(email)) &&
+        (!date || r.created_at.startsWith(date))
+      );
+      const filteredSubjective = subjectiveAnswers.filter(r =>
+        (!email || r.user_email.includes(email)) &&
+        (!date || r.created_at.startsWith(date))
+      );
+
+      renderTables(filteredQuiz, filteredSubjective);
+      renderChart(filteredQuiz);
+    }
+
+    // ฟังก์ชันนี้ถูกปรับปรุงให้ดึงคอลัมน์ 'name' มาแสดง
+    function renderTables(quizData, subjectiveData) {
+      const quizTable = document.getElementById("quizTableBody");
+      const subjectiveTable = document.getElementById("subjectiveTableBody");
+      quizTable.innerHTML = "";
+      subjectiveTable.innerHTML = "";
+
+      quizData.forEach((r, i) => {
+        const row = document.createElement("tr");
+        // แสดง r.name (สำหรับ quiz_results)
+        // ใช้ r.name || 'N/A' เพื่อจัดการกับแถวข้อมูลเก่าที่อาจยังไม่มีชื่อ
+        row.innerHTML = `<td>${i + 1}</td><td>${r.name || 'N/A'}</td><td>${r.user_email}</td><td>${r.score}</td><td>${r.total_questions}</td><td>${r.created_at}</td>`;
+        quizTable.appendChild(row);
+      });
+
+      subjectiveData.forEach((r, i) => {
+        const row = document.createElement("tr");
+        // แสดง r.name (สำหรับ subjective_answers)
+        row.innerHTML = `<td>${i + 1}</td><td>${r.name || 'N/A'}</td><td>${r.user_email}</td><td><pre>${JSON.stringify(r.answers, null, 2)}</pre></td><td>${r.created_at}</td>`;
+        subjectiveTable.appendChild(row);
+      });
+    }
+
+    function renderChart(data) {
+      const ctx = document.getElementById("scoreChart").getContext("2d");
+      const labels = data.map(r => r.user_email);
+      const scores = data.map(r => r.score);
+      if (window.scoreChartInstance) window.scoreChartInstance.destroy();
+      window.scoreChartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: labels,
+          datasets: [{
+            label: "คะแนนรวม",
+            data: scores,
+            backgroundColor: "rgba(0, 122, 204, 0.6)"
+          }]
+        },
+        options: {
+          animation: {
+            duration: 1000,
+            easing: "easeOutBounce"
+          },
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    function downloadExcel() {
+      const wb = XLSX.utils.book_new();
+      const quizTable = XLSX.utils.table_to_sheet(document.getElementById("quizTable"));
+      const subjectiveTable = XLSX.utils.table_to_sheet(document.getElementById("subjectiveTable"));
+      XLSX.utils.book_append_sheet(wb, quizTable, "ปรนัย");
+      XLSX.utils.book_append_sheet(wb, subjectiveTable, "อัตนัย");
+      XLSX.writeFile(wb, "ผลการสอบ.xlsx");
+    }
+
+    function downloadPDF() {
+      const element = document.getElementById("dashboard");
+      html2pdf().from(element).save("ผลการสอบ.pdf");
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("searchBtn").addEventListener("click", fetchData);
+      document.getElementById("downloadExcelBtn").addEventListener("click", downloadExcel);
+      document.getElementById("downloadPDFBtn").addEventListener("click", downloadPDF);
+    });
+  </script>
+  <style>
+    body {
+      font-family: 'Sarabun', sans-serif;
+      background: #f0f2f5;
+      margin: 0;
+      padding: 20px;
+    }
+    h2 {
+      text-align: center;
+      color: #007acc;
+    }
+    .search-box {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      justify-content: center;
+    }
+    input, button {
+      padding: 10px;
+      font-size: 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 30px;
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background: #007acc;
+      color: white;
+    }
+    canvas {
+      max-width: 100%;
+      margin-bottom: 30px;
+    }
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 30px;
+    }
+  </style>
+</head>
+<body>
+  <div id="dashboard">
+    <h2>แดชบอร์ดผลการสอบ</h2>
+    <div class="search-box">
+      <input type="text" id="emailInput" placeholder="ค้นหาอีเมลพนักงาน">
+      <input type="date" id="dateInput">
+      <button id="searchBtn">ค้นหา</button>
+    </div>
+    <div class="btn-group">
+      <button id="downloadExcelBtn">ดาวน์โหลด Excel</button>
+      <button id="downloadPDFBtn">ดาวน์โหลด PDF</button>
+    </div>
+    <canvas id="scoreChart" height="100"></canvas>
+    <h3>ตารางสรุปคะแนน (ข้อสอบปรนัย)</h3>
+    <table id="quizTable">
+      <thead>
+                <tr><th>#</th><th>ชื่อผู้ทำแบบทดสอบ</th><th>อีเมล</th><th>คะแนน</th><th>จำนวนข้อ</th><th>วันที่ทำแบบทดสอบ</th></tr>
+      </thead>
+      <tbody id="quizTableBody"></tbody>
+    </table>
+    <h3>ตารางคำตอบ (ข้อสอบอัตนัย)</h3>
+    <table id="subjectiveTable">
+      <thead>
+                <tr><th>#</th><th>ชื่อผู้ทำแบบทดสอบ</th><th>อีเมล</th><th>คำตอบ</th><th>วันที่ทำแบบทดสอบ</th></tr>
+      </thead>
+      <tbody id="subjectiveTableBody"></tbody>
+    </table>
+  </div>
+</body>
+</html>
