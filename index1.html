@@ -1,186 +1,341 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>แดชบอร์ดผลการสอบ</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-  <script type="module">
-    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
-    const supabase = createClient(
-      'https://wzwyotzzxycqfwercakh.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno'
-    );
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>แดชบอร์ดผลการสอบ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+    const supabase = createClient(
+      'https://wzwyotzzxycqfwercakh.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno'
+    );
 
-    async function fetchData() {
-      const email = document.getElementById("emailInput").value.trim();
-      const date = document.getElementById("dateInput").value.trim();
+    async function fetchData() {
+      // เปลี่ยนแปลงการดึงค่าจาก nameInput
+      const name = document.getElementById("nameInput").value.trim().toLowerCase();
+      const date = document.getElementById("dateInput").value.trim();
 
-      // ดึงข้อมูลทั้งหมด รวมถึงคอลัมน์ 'name'
-      const { data: quizResults } = await supabase.from("quiz_results").select("*");
-      const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*");
+      const { data: quizResults } = await supabase.from("quiz_results").select("*");
+      const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*");
 
-      const filteredQuiz = quizResults.filter(r =>
-        (!email || r.user_email.includes(email)) &&
-        (!date || r.created_at.startsWith(date))
-      );
-      const filteredSubjective = subjectiveAnswers.filter(r =>
-        (!email || r.user_email.includes(email)) &&
-        (!date || r.created_at.startsWith(date))
-      );
+      // เปลี่ยนเงื่อนไขกรองข้อมูลให้ค้นหาจาก r.name แทน r.user_email
+      const filteredQuiz = (quizResults || []).filter(r =>
+        (!name || (r.name && r.name.toLowerCase().includes(name))) &&
+        (!date || (r.created_at && r.created_at.startsWith(date)))
+      );
+      
+      const filteredSubjective = (subjectiveAnswers || []).filter(r =>
+        (!name || (r.name && r.name.toLowerCase().includes(name))) &&
+        (!date || (r.created_at && r.created_at.startsWith(date)))
+      );
 
-      renderTables(filteredQuiz, filteredSubjective);
-      renderChart(filteredQuiz);
-    }
+      renderTables(filteredQuiz, filteredSubjective);
+      renderChart(filteredQuiz);
+    }
 
-    // ฟังก์ชันนี้ถูกปรับปรุงให้ดึงคอลัมน์ 'name' มาแสดง
-    function renderTables(quizData, subjectiveData) {
-      const quizTable = document.getElementById("quizTableBody");
-      const subjectiveTable = document.getElementById("subjectiveTableBody");
-      quizTable.innerHTML = "";
-      subjectiveTable.innerHTML = "";
+    function renderTables(quizData, subjectiveData) {
+      const quizTable = document.getElementById("quizTableBody");
+      const subjectiveTable = document.getElementById("subjectiveTableBody");
+      quizTable.innerHTML = "";
+      subjectiveTable.innerHTML = "";
 
-      quizData.forEach((r, i) => {
-        const row = document.createElement("tr");
-        // แสดง r.name (สำหรับ quiz_results)
-        // ใช้ r.name || 'N/A' เพื่อจัดการกับแถวข้อมูลเก่าที่อาจยังไม่มีชื่อ
-        row.innerHTML = `<td>${i + 1}</td><td>${r.name || 'N/A'}</td><td>${r.user_email}</td><td>${r.score}</td><td>${r.total_questions}</td><td>${r.created_at}</td>`;
-        quizTable.appendChild(row);
-      });
+      if (quizData.length === 0) {
+        quizTable.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#888;">ไม่พบข้อมูล</td></tr>`;
+      } else {
+        quizData.forEach((r, i) => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${i + 1}</td>
+            <td><strong>${r.name || 'N/A'}</strong></td>
+            <td>${r.user_email || '-'}</td>
+            <td><span class="badge-score">${r.score}</span></td>
+            <td>${r.total_questions}</td>
+            <td>${r.created_at ? new Date(r.created_at).toLocaleString('th-TH') : '-'}</td>
+          `;
+          quizTable.appendChild(row);
+        });
+      }
 
-      subjectiveData.forEach((r, i) => {
-        const row = document.createElement("tr");
-        // แสดง r.name (สำหรับ subjective_answers)
-        row.innerHTML = `<td>${i + 1}</td><td>${r.name || 'N/A'}</td><td>${r.user_email}</td><td><pre>${JSON.stringify(r.answers, null, 2)}</pre></td><td>${r.created_at}</td>`;
-        subjectiveTable.appendChild(row);
-      });
-    }
+      if (subjectiveData.length === 0) {
+        subjectiveTable.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#888;">ไม่พบข้อมูล</td></tr>`;
+      } else {
+        subjectiveData.forEach((r, i) => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${i + 1}</td>
+            <td><strong>${r.name || 'N/A'}</strong></td>
+            <td>${r.user_email || '-'}</td>
+            <td><pre class="json-preview">${JSON.stringify(r.answers, null, 2)}</pre></td>
+            <td>${r.created_at ? new Date(r.created_at).toLocaleString('th-TH') : '-'}</td>
+          `;
+          subjectiveTable.appendChild(row);
+        });
+      }
+    }
 
-    function renderChart(data) {
-      const ctx = document.getElementById("scoreChart").getContext("2d");
-      const labels = data.map(r => r.user_email);
-      const scores = data.map(r => r.score);
-      if (window.scoreChartInstance) window.scoreChartInstance.destroy();
-      window.scoreChartInstance = new Chart(ctx, {
-        type: "bar",
-        data: {
-          labels: labels,
-          datasets: [{
-            label: "คะแนนรวม",
-            data: scores,
-            backgroundColor: "rgba(0, 122, 204, 0.6)"
-          }]
-        },
-        options: {
-          animation: {
-            duration: 1000,
-            easing: "easeOutBounce"
-          },
-          scales: {
-            y: { beginAtZero: true }
-          }
-        }
-      });
-    }
+    function renderChart(data) {
+      const ctx = document.getElementById("scoreChart").getContext("2d");
+      // แสดงชื่อบนกราฟแทนอีเมล (ถ้าไม่มีชื่อให้ใช้อีเมลหรือ N/A)
+      const labels = data.map(r => r.name || r.user_email || 'N/A');
+      const scores = data.map(r => r.score);
+      
+      if (window.scoreChartInstance) window.scoreChartInstance.destroy();
+      
+      window.scoreChartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: labels,
+          datasets: [{
+            label: "คะแนนรวม",
+            data: scores,
+            backgroundColor: "rgba(0, 122, 204, 0.75)",
+            borderColor: "rgba(0, 122, 204, 1)",
+            borderWidth: 1,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { labels: { font: { family: 'Sarabun' } } }
+          },
+          animation: {
+            duration: 800,
+            easing: "easeOutQuart"
+          },
+          scales: {
+            y: { beginAtZero: true, ticks: { precision: 0 } }
+          }
+        }
+      });
+    }
 
-    function downloadExcel() {
-      const wb = XLSX.utils.book_new();
-      const quizTable = XLSX.utils.table_to_sheet(document.getElementById("quizTable"));
-      const subjectiveTable = XLSX.utils.table_to_sheet(document.getElementById("subjectiveTable"));
-      XLSX.utils.book_append_sheet(wb, quizTable, "ปรนัย");
-      XLSX.utils.book_append_sheet(wb, subjectiveTable, "อัตนัย");
-      XLSX.writeFile(wb, "ผลการสอบ.xlsx");
-    }
+    function downloadExcel() {
+      const wb = XLSX.utils.book_new();
+      const quizTable = XLSX.utils.table_to_sheet(document.getElementById("quizTable"));
+      const subjectiveTable = XLSX.utils.table_to_sheet(document.getElementById("subjectiveTable"));
+      XLSX.utils.book_append_sheet(wb, quizTable, "ปรนัย");
+      XLSX.utils.book_append_sheet(wb, subjectiveTable, "อัตนัย");
+      XLSX.writeFile(wb, "ผลการสอบ.xlsx");
+    }
 
-    function downloadPDF() {
-      const element = document.getElementById("dashboard");
-      html2pdf().from(element).save("ผลการสอบ.pdf");
-    }
+    function downloadPDF() {
+      const element = document.getElementById("dashboard");
+      const opt = {
+        margin:       0.3,
+        filename:     'ผลการสอบ.pdf',
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2 },
+        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
+      };
+      html2pdf().set(opt).from(element).save();
+    }
 
-    window.addEventListener("DOMContentLoaded", () => {
-      document.getElementById("searchBtn").addEventListener("click", fetchData);
-      document.getElementById("downloadExcelBtn").addEventListener("click", downloadExcel);
-      document.getElementById("downloadPDFBtn").addEventListener("click", downloadPDF);
-    });
-  </script>
-  <style>
-    body {
-      font-family: 'Sarabun', sans-serif;
-      background: #f0f2f5;
-      margin: 0;
-      padding: 20px;
-    }
-    h2 {
-      text-align: center;
-      color: #007acc;
-    }
-    .search-box {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 20px;
-      justify-content: center;
-    }
-    input, button {
-      padding: 10px;
-      font-size: 1rem;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 30px;
-      background: #fff;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    th, td {
-      border: 1px solid #ccc;
-      padding: 8px;
-      text-align: left;
-    }
-    th {
-      background: #007acc;
-      color: white;
-    }
-    canvas {
-      max-width: 100%;
-      margin-bottom: 30px;
-    }
-    .btn-group {
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-      margin-bottom: 30px;
-    }
-  </style>
+    window.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("searchBtn").addEventListener("click", fetchData);
+      document.getElementById("downloadExcelBtn").addEventListener("click", downloadExcel);
+      document.getElementById("downloadPDFBtn").addEventListener("click", downloadPDF);
+      fetchData(); // โหลดข้อมูลเบื้องต้นทันทีที่เปิดหน้า
+    });
+  </script>
+
+  <style>
+    body {
+      font-family: 'Sarabun', sans-serif;
+      background: #f4f7f9;
+      color: #333;
+      margin: 0;
+      padding: 30px 15px;
+    }
+
+    #dashboard {
+      max-width: 1100px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    }
+
+    h2 {
+      text-align: center;
+      color: #007acc;
+      font-weight: 700;
+      margin-top: 0;
+      margin-bottom: 25px;
+    }
+
+    h3 {
+      color: #2c3e50;
+      font-size: 1.15rem;
+      margin-top: 30px;
+      margin-bottom: 15px;
+      border-left: 4px solid #007acc;
+      padding-left: 10px;
+    }
+
+    .search-box {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      justify-content: center;
+      flex-wrap: wrap;
+      background: #f8fafc;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+
+    input, button {
+      padding: 10px 16px;
+      font-size: 0.95rem;
+      font-family: 'Sarabun', sans-serif;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    input:focus {
+      border-color: #007acc;
+      box-shadow: 0 0 0 3px rgba(0, 122, 204, 0.15);
+    }
+
+    button {
+      background: #007acc;
+      color: white;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #005999;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-bottom: 20px;
+    }
+
+    .btn-secondary {
+      background: #22c55e;
+    }
+    .btn-secondary:hover {
+      background: #16a34a;
+    }
+
+    .btn-danger {
+      background: #ef4444;
+    }
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+
+    .chart-container {
+      background: #fff;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      margin-bottom: 25px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      margin-bottom: 25px;
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+    }
+
+    th, td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 0.95rem;
+    }
+
+    th {
+      background: #007acc;
+      color: white;
+      font-weight: 600;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background-color: #f8fafc;
+    }
+
+    .badge-score {
+      background-color: #e0f2fe;
+      color: #0369a1;
+      font-weight: bold;
+      padding: 3px 8px;
+      border-radius: 12px;
+    }
+
+    .json-preview {
+      margin: 0;
+      background: #f1f5f9;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+  </style>
 </head>
 <body>
-  <div id="dashboard">
-    <h2>แดชบอร์ดผลการสอบ</h2>
-    <div class="search-box">
-      <input type="text" id="emailInput" placeholder="ค้นหาอีเมลพนักงาน">
-      <input type="date" id="dateInput">
-      <button id="searchBtn">ค้นหา</button>
-    </div>
-    <div class="btn-group">
-      <button id="downloadExcelBtn">ดาวน์โหลด Excel</button>
-      <button id="downloadPDFBtn">ดาวน์โหลด PDF</button>
-    </div>
-    <canvas id="scoreChart" height="100"></canvas>
-    <h3>ตารางสรุปคะแนน (ข้อสอบปรนัย)</h3>
-    <table id="quizTable">
-      <thead>
-                <tr><th>#</th><th>ชื่อผู้ทำแบบทดสอบ</th><th>อีเมล</th><th>คะแนน</th><th>จำนวนข้อ</th><th>วันที่ทำแบบทดสอบ</th></tr>
-      </thead>
-      <tbody id="quizTableBody"></tbody>
-    </table>
-    <h3>ตารางคำตอบ (ข้อสอบอัตนัย)</h3>
-    <table id="subjectiveTable">
-      <thead>
-                <tr><th>#</th><th>ชื่อผู้ทำแบบทดสอบ</th><th>อีเมล</th><th>คำตอบ</th><th>วันที่ทำแบบทดสอบ</th></tr>
-      </thead>
-      <tbody id="subjectiveTableBody"></tbody>
-    </table>
-  </div>
+  <div id="dashboard">
+    <h2>แดชบอร์ดผลการสอบ</h2>
+    
+    <div class="search-box">
+      <!-- เปลี่ยนจาก emailInput เป็น nameInput -->
+      <input type="text" id="nameInput" placeholder="ค้นหาด้วยชื่อผู้ทำแบบทดสอบ">
+      <input type="date" id="dateInput">
+      <button id="searchBtn">ค้นหา</button>
+    </div>
+
+    <div class="btn-group">
+      <button id="downloadExcelBtn" class="btn-secondary">ดาวน์โหลด Excel</button>
+      <button id="downloadPDFBtn" class="btn-danger">ดาวน์โหลด PDF</button>
+    </div>
+
+    <div class="chart-container">
+      <canvas id="scoreChart" height="100"></canvas>
+    </div>
+
+    <h3>ตารางสรุปคะแนน (ข้อสอบปรนัย)</h3>
+    <table id="quizTable">
+      <thead>
+        <tr><th>#</th><th>ชื่อผู้ทำแบบทดสอบ</th><th>อีเมล</th><th>คะแนน</th><th>จำนวนข้อ</th><th>วันที่ทำแบบทดสอบ</th></tr>
+      </thead>
+      <tbody id="quizTableBody"></tbody>
+    </table>
+
+    <h3>ตารางคำตอบ (ข้อสอบอัตนัย)</h3>
+    <table id="subjectiveTable">
+      <thead>
+        <tr><th>#</th><th>ชื่อผู้ทำแบบทดสอบ</th><th>อีเมล</th><th>คำตอบ</th><th>วันที่ทำแบบทดสอบ</th></tr>
+      </thead>
+      <tbody id="subjectiveTableBody"></tbody>
+    </table>
+  </div>
 </body>
 </html>
