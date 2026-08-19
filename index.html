@@ -39,7 +39,7 @@
       }
     }
 
-    .form-control:focus {
+    .form-control:focus, .form-select:focus {
       box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
     }
 
@@ -79,6 +79,7 @@
         const name = document.getElementById('name').value;
         const email = document.getElementById('email').value;
         const department = document.getElementById('department').value;
+        const experience = document.getElementById('experience').value; // ดึงค่าประสบการณ์
 
         if (!email) {
           showMessage('กรุณากรอกอีเมล', true);
@@ -96,13 +97,23 @@
 
           if (userData) {
             showMessage('เข้าสู่ระบบสำเร็จ! กำลังนำทาง...', false);
-            setTimeout(() => window.location.href = "index2.html", 1500);
+            // ส่งค่าไปยังหน้าสรุปผ่าน URL Parameter
+            setTimeout(() => {
+              window.location.href = `index2.html?email=${encodeURIComponent(email)}`;
+            }, 1500);
             return;
           }
 
-          await supabase.from('users').insert([{ email, full_name: name, department }]);
+          // บันทึกข้อมูลรวมถึง experience ลง Supabase
+          await supabase.from('users').insert([
+            { email, full_name: name, department, experience }
+          ]);
+          
           showMessage('ลงทะเบียนสำเร็จ! กำลังนำทาง...', false);
-          setTimeout(() => window.location.href = "index1.html", 1500);
+          // ส่งค่าไปยังหน้าสรุปผ่าน URL Parameter
+          setTimeout(() => {
+            window.location.href = `index1.html?email=${encodeURIComponent(email)}`;
+          }, 1500);
 
         } catch (err) {
           console.error(err);
@@ -129,6 +140,17 @@
           <label for="department" class="form-label">แผนก:</label>
           <input type="text" id="department" name="department" class="form-control">
         </div>
+        <!-- เพิ่มช่องกรอกประสบการณ์ -->
+        <div class="mb-3">
+          <label for="experience" class="form-label">ประสบการณ์ทำงาน:</label>
+          <select id="experience" name="experience" class="form-select" required>
+            <option value="" selected disabled>-- เลือกประสบการณ์ --</option>
+            <option value="น้อยกว่า 1 ปี">น้อยกว่า 1 ปี</option>
+            <option value="1 - 3 ปี">1 - 3 ปี</option>
+            <option value="3 - 5 ปี">3 - 5 ปี</option>
+            <option value="มากกว่า 5 ปี">มากกว่า 5 ปี</option>
+          </select>
+        </div>
         <button type="submit" class="btn btn-success w-100"><i class="bi bi-box-arrow-in-right me-2"></i>เข้าสู่ระบบ</button>
       </form>
       <div id="messageBox" style="display:none;"></div>
@@ -136,6 +158,3 @@
   </div>
 </body>
 </html>
-
-
-
