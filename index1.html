@@ -3,10 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>แดชบอร์ดผลการสอบและการวิเคราะห์รายบุคคล</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <title>แดชบอร์ดผลการสอบ</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -18,56 +15,38 @@
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno'
     );
 
-    // 📌 แก้ไข/เพิ่ม ข้อความคำถามจริงของคุณตรงนี้ได้เลยครับ
-    const QUESTIONS_MAP = {
-      q1: "คำถามอัตนัยข้อที่ 1 (เปลี่ยนข้อความใน QUESTIONS_MAP ในโค้ดได้เลย)",
-      q2: "คำถามอัตนัยข้อที่ 2 (เปลี่ยนข้อความใน QUESTIONS_MAP ในโค้ดได้เลย)",
-      q3: "คำถามอัตนัยข้อที่ 3 (เปลี่ยนข้อความใน QUESTIONS_MAP ในโค้ดได้เลย)",
-      q4: "คำถามอัตนัยข้อที่ 4 (เปลี่ยนข้อความใน QUESTIONS_MAP ในโค้ดได้เลย)",
-      q5: "คำถามอัตนัยข้อที่ 5 (เปลี่ยนข้อความใน QUESTIONS_MAP ในโค้ดได้เลย)"
-    };
-
-    let globalQuizData = [];
-    let globalSubjectiveData = [];
+    // 📌 วางข้อความคำถามอัตนัยภาษาไทยจริงของคุณตามลำดับตรงนี้ได้เลยครับ
+    const QUESTIONS_LIST = [
+      "คำถามอัตนัยข้อที่ 1 (ไม่สนใจประกันครับ/ค่ะ)",
+      "คำถามอัตนัยข้อที่ 2 (มีประกันอยู่แล้วหลายตัว?)",
+      "คำถามอัตนัยข้อที่ 3 (ไม่อยากเพิ่มภาระประกันอีก?)",
+      "คำถามอัตนัยข้อที่ 4 (ไม่อยากซ้ำซ้อนกับของเดิม?)",
+      "คำถามอัตนัยข้อที่ 5 (ตอนนี้ไม่สะดวกคุยครับ/ค่ะ)"
+      "คำถามอัตนัยข้อที่ 6 (มีเอกสารส่งให้ดูก่อนไหม?)",
+      "คำถามอัตนัยข้อที่ 7 (ขอปรึกษาที่บ้านก่อน?)",
+      "คำถามอัตนัยข้อที่ 8 (ยังไม่ตัดสินใจครับ?)",
+      "คำถามอัตนัยข้อที่ 9 (เบี้ยแพงไปไม่มีเงินจ่าย?)",
+      "คำถามอัตนัยข้อที่ 10 (ทำแล้วยกเลิกได้ไหม?)"
+    ];
 
     async function fetchData() {
-      const name = document.getElementById("nameInput").value.trim().toLowerCase();
+      const email = document.getElementById("emailInput").value.trim();
       const date = document.getElementById("dateInput").value.trim();
 
       const { data: quizResults } = await supabase.from("quiz_results").select("*");
       const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*");
 
-      globalQuizData = (quizResults || []).filter(r =>
-        (!name || (r.name && r.name.toLowerCase().includes(name))) &&
+      const filteredQuiz = (quizResults || []).filter(r =>
+        (!email || (r.user_email && r.user_email.includes(email))) &&
         (!date || (r.created_at && r.created_at.startsWith(date)))
       );
-      
-      globalSubjectiveData = (subjectiveAnswers || []).filter(r =>
-        (!name || (r.name && r.name.toLowerCase().includes(name))) &&
+      const filteredSubjective = (subjectiveAnswers || []).filter(r =>
+        (!email || (r.user_email && r.user_email.includes(email))) &&
         (!date || (r.created_at && r.created_at.startsWith(date)))
       );
 
-      renderSummaryStats(globalQuizData);
-      renderTables(globalQuizData, globalSubjectiveData);
-      renderOverallAnalysis(globalQuizData, globalSubjectiveData);
-      renderChart(globalQuizData);
-    }
-
-    function renderSummaryStats(quizData) {
-      if (!quizData || quizData.length === 0) {
-        document.getElementById("avgScore").innerText = "0";
-        document.getElementById("maxScore").innerText = "0";
-        document.getElementById("totalCandidates").innerText = "0";
-        return;
-      }
-      const total = quizData.length;
-      const sum = quizData.reduce((acc, curr) => acc + (curr.score || 0), 0);
-      const avg = (sum / total).toFixed(1);
-      const max = Math.max(...quizData.map(r => r.score || 0));
-
-      document.getElementById("avgScore").innerText = avg;
-      document.getElementById("maxScore").innerText = max;
-      document.getElementById("totalCandidates").innerText = total;
+      renderTables(filteredQuiz, filteredSubjective);
+      renderChart(filteredQuiz);
     }
 
     function renderTables(quizData, subjectiveData) {
@@ -77,231 +56,64 @@
       subjectiveTable.innerHTML = "";
 
       // 1. ตารางปรนัย
-      if (quizData.length === 0) {
-        quizTable.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#888;">ไม่พบข้อมูล</td></tr>`;
-      } else {
-        quizData.forEach((r, i) => {
-          const row = document.createElement("tr");
-          row.innerHTML = `
-            <td>${i + 1}</td>
-            <td><strong>${r.name || 'N/A'}</strong></td>
-            <td>${r.user_email || '-'}</td>
-            <td><span class="badge-score">${r.score}</span></td>
-            <td>${r.total_questions || '-'}</td>
-            <td>${r.created_at ? new Date(r.created_at).toLocaleString('th-TH') : '-'}</td>
-            <td><button class="btn-action" onclick="openIndividualModal('${r.name || r.user_email}')">🔍 วิเคราะห์รายบุคคล</button></td>
-          `;
-          quizTable.appendChild(row);
-        });
-      }
+      quizData.forEach((r, i) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td>${i + 1}</td><td>${r.name || 'N/A'}</td><td>${r.user_email}</td><td>${r.score}</td><td>${r.total_questions}</td><td>${r.created_at}</td>`;
+        quizTable.appendChild(row);
+      });
 
-      // 2. ตารางอัตนัย
-      if (subjectiveData.length === 0) {
-        subjectiveTable.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#888;">ไม่พบข้อมูล</td></tr>`;
-      } else {
-        subjectiveData.forEach((r, i) => {
-          const row = document.createElement("tr");
-          let formattedAnswers = formatAnswersHTML(r.answers);
-
-          row.innerHTML = `
-            <td>${i + 1}</td>
-            <td><strong>${r.name || 'N/A'}</strong></td>
-            <td>${r.user_email || '-'}</td>
-            <td>${formattedAnswers}</td>
-            <td>${r.created_at ? new Date(r.created_at).toLocaleString('th-TH') : '-'}</td>
-            <td><button class="btn-action" onclick="openIndividualModal('${r.name || r.user_email}')">🔍 วิเคราะห์รายบุคคล</button></td>
-          `;
-          subjectiveTable.appendChild(row);
-        });
-      }
+      // 2. ตารางอัตนัย (เปลี่ยนจาก JSON.stringify เป็น formatAnswersHTML)
+      subjectiveData.forEach((r, i) => {
+        const row = document.createElement("tr");
+        const formattedAnswers = formatAnswersHTML(r.answers);
+        row.innerHTML = `<td>${i + 1}</td><td>${r.name || 'N/A'}</td><td>${r.user_email}</td><td>${formattedAnswers}</td><td>${r.created_at}</td>`;
+        subjectiveTable.appendChild(row);
+      });
     }
 
-    // Helper ในการแปลงชุดคำตอบข้อสอบอัตนัย โดยดึงคำถามจริงจาก QUESTIONS_MAP
     function formatAnswersHTML(answers) {
       if (!answers) return "<span style='color:#888;'>ไม่มีข้อมูลคำตอบ</span>";
 
+      let entries = [];
+
       if (Array.isArray(answers)) {
-        if (answers.length === 0) return "<span style='color:#888;'>ไม่มีรายการคำตอบ</span>";
-
-        return answers.map((item, idx) => {
-          let qKey = "";
-          let aText = "";
-
+        entries = answers.map((item, idx) => {
           if (typeof item === 'object' && item !== null) {
-            qKey = item.q || item.question_id || item.key || `q${idx + 1}`;
-            aText = item.answer || item.a || item.value || JSON.stringify(item);
-          } else {
-            qKey = `q${idx + 1}`;
-            aText = item;
+            return {
+              key: item.q || item.question_id || item.key || `q${idx + 1}`,
+              val: item.answer || item.a || item.value || JSON.stringify(item)
+            };
           }
-
-          const fullQuestion = QUESTIONS_MAP[qKey] || `คำถามข้อที่ ${idx + 1} (${qKey})`;
-
-          return `
-            <div class="qa-item">
-              <div class="qa-question"><strong>ข้อที่ ${idx + 1}: ${fullQuestion}</strong></div>
-              <div class="qa-answer"><strong>คำตอบ:</strong> ${aText || '-'}</div>
-            </div>
-          `;
-        }).join("");
-      } 
-      else if (typeof answers === 'object' && answers !== null) {
-        const entries = Object.entries(answers);
-        if (entries.length === 0) return "<span style='color:#888;'>ไม่มีข้อมูล</span>";
-
-        return entries.map(([qKey, aVal], idx) => {
-          const fullQuestion = QUESTIONS_MAP[qKey] || `คำถามข้อที่ ${idx + 1} (${qKey})`;
-          const aText = (typeof aVal === 'object' && aVal !== null) ? JSON.stringify(aVal) : aVal;
-          
-          return `
-            <div class="qa-item">
-              <div class="qa-question"><strong>ข้อที่ ${idx + 1}: ${fullQuestion}</strong></div>
-              <div class="qa-answer"><strong>คำตอบ:</strong> ${aText || '-'}</div>
-            </div>
-          `;
-        }).join("");
+          return { key: `q${idx + 1}`, val: item };
+        });
+      } else if (typeof answers === 'object' && answers !== null) {
+        entries = Object.entries(answers).map(([k, v]) => ({
+          key: k,
+          val: (typeof v === 'object' && v !== null) ? JSON.stringify(v) : v
+        }));
+      } else {
+        return `<div style="padding:4px;"><strong>คำตอบ:</strong> ${answers}</div>`;
       }
 
-      return `<div class="qa-item"><div class="qa-answer"><strong>คำตอบ:</strong> ${answers}</div></div>`;
-    }
+      if (entries.length === 0) return "<span style='color:#888;'>ไม่มีรายการคำตอบ</span>";
 
-    function renderOverallAnalysis(quizData, subjectiveData) {
-      const container = document.getElementById("analysisBox");
-      if (quizData.length === 0 && subjectiveData.length === 0) {
-        container.innerHTML = "<p style='color:#888;'>ไม่มีข้อมูลเพียงพอสำหรับการวิเคราะห์</p>";
-        return;
-      }
+      return entries.map((item, idx) => {
+        const fullQuestion = QUESTIONS_LIST[idx] || `คำถามข้อที่ ${idx + 1} (${item.key})`;
 
-      let strengths = [];
-      let weaknesses = [];
-
-      if (quizData.length > 0) {
-        const scores = quizData.map(r => (r.score / (r.total_questions || 1)) * 100);
-        const avgPercentage = scores.reduce((a, b) => a + b, 0) / scores.length;
-
-        if (avgPercentage >= 75) {
-          strengths.push(`ภาพรวมกลุ่มผู้เข้าสอบมีทักษะดีเยี่ยม (คะแนนเฉลี่ย ${avgPercentage.toFixed(1)}%)`);
-        } else {
-          weaknesses.push(`คะแนนเฉลี่ยภาพรวมอยู่ที่ ${avgPercentage.toFixed(1)}% ควรมีการเสริมเนื้อหาทบทวนเพิ่มเติม`);
-        }
-      }
-
-      container.innerHTML = `
-        <div class="swot-grid">
-          <div class="swot-card strength">
-            <h4>💪 จุดแข็งภาพรวม</h4>
-            <ul>${strengths.map(s => `<li>${s}</li>`).join('') || '<li>-</li>'}</ul>
+        return `
+          <div style="background:#f8fafc; border-left:3px solid #007acc; padding:6px 10px; margin-bottom:6px; border-radius:0 4px 4px 0; font-size:0.9rem;">
+            <div style="color:#0f172a; margin-bottom:2px;"><strong>ข้อที่ ${idx + 1}: ${fullQuestion}</strong></div>
+            <div style="color:#334155;"><strong>คำตอบ:</strong> ${item.val || '-'}</div>
           </div>
-          <div class="swot-card weakness">
-            <h4>⚠️ จุดอ่อนภาพรวม</h4>
-            <ul>${weaknesses.map(w => `<li>${w}</li>`).join('') || '<li>-</li>'}</ul>
-          </div>
-        </div>
-      `;
-    }
-
-    window.openIndividualModal = function(identifier) {
-      const userQuiz = globalQuizData.find(r => (r.name === identifier || r.user_email === identifier));
-      const userSubjective = globalSubjectiveData.find(r => (r.name === identifier || r.user_email === identifier));
-
-      if (!userQuiz && !userSubjective) {
-        alert("ไม่พบข้อมูลของผู้สอบท่านนี้");
-        return;
-      }
-
-      const name = (userQuiz && userQuiz.name) || (userSubjective && userSubjective.name) || identifier;
-      const email = (userQuiz && userQuiz.user_email) || (userSubjective && userSubjective.user_email) || '-';
-      const score = userQuiz ? userQuiz.score : '-';
-      const total = userQuiz ? userQuiz.total_questions : '-';
-      const percent = (userQuiz && userQuiz.total_questions) ? ((userQuiz.score / userQuiz.total_questions) * 100).toFixed(1) : 0;
-
-      let pStrengths = [];
-      let pWeaknesses = [];
-      let pRecommendations = [];
-
-      if (userQuiz) {
-        if (percent >= 80) {
-          pStrengths.push(`ทำคะแนนสอบปรนัยได้ดีเยี่ยม (${score}/${total} คิดเป็น ${percent}%)`);
-          pRecommendations.push(`มีความเข้าใจเนื้อหาแม่นยำ พร้อมประยุกต์ใช้งานจริง`);
-        } else if (percent >= 50) {
-          pStrengths.push(`ผ่านเกณฑ์การทดสอบปรนัยพื้นฐาน (${percent}%)`);
-          pWeaknesses.push(`ยังมีจุดคลาดเคลื่อนบางข้อ ทบทวนเพิ่มเติมจะช่วยเพิ่มความแม่นยำ`);
-          pRecommendations.push(`ควรทบทวนข้อสอบที่ตอบผิดเพื่อเก็บรายละเอียด`);
-        } else {
-          pWeaknesses.push(`คะแนนสอบปรนัยต่ำกว่าเกณฑ์มาตรฐาน (${percent}%)`);
-          pRecommendations.push(`จัดทำแผนการเรียนรู้เสริม (Remedial Training) และทำการทดสอบซ้ำ`);
-        }
-      }
-
-      let subjectiveDetails = "-";
-      if (userSubjective) {
-        subjectiveDetails = formatAnswersHTML(userSubjective.answers);
-      }
-
-      const content = document.getElementById("modalReportContent");
-      content.innerHTML = `
-        <div style="border-bottom: 2px solid #007acc; padding-bottom: 10px; margin-bottom: 20px;">
-          <h2 style="color:#007acc; margin:0;">รายงานสรุปผลการสอบรายบุคคล</h2>
-          <p style="margin:5px 0 0 0; color:#64748b;">ข้อมูล ณ วันที่: ${new Date().toLocaleDateString('th-TH')}</p>
-        </div>
-
-        <div style="background:#f8fafc; padding:15px; border-radius:8px; margin-bottom:20px; border:1px solid #e2e8f0;">
-          <p style="margin:4px 0;"><strong>ชื่อ-นามสกุล:</strong> ${name}</p>
-          <p style="margin:4px 0;"><strong>อีเมล:</strong> ${email}</p>
-          <p style="margin:4px 0;"><strong>คะแนนปรนัย:</strong> <span style="color:#007acc; font-weight:bold;">${score} / ${total} (${percent}%)</span></p>
-        </div>
-
-        <h3 style="color:#2c3e50;">📌 ผลการวิเคราะห์ทักษะ (Individual SWOT)</h3>
-        <div class="swot-grid">
-          <div class="swot-card strength">
-            <h4>💪 จุดแข็ง (Strengths)</h4>
-            <ul>${pStrengths.length ? pStrengths.map(s => `<li>${s}</li>`).join('') : '<li>-</li>'}</ul>
-          </div>
-          <div class="swot-card weakness">
-            <h4>⚠️ จุดที่ควรปรับปรุง (Weaknesses)</h4>
-            <ul>${pWeaknesses.length ? pWeaknesses.map(w => `<li>${w}</li>`).join('') : '<li>ไม่มีจุดอ่อนเด่นชัด</li>'}</ul>
-          </div>
-        </div>
-
-        <div class="swot-card recommendation" style="margin-top:15px;">
-          <h4>💡 คำแนะนำการพัฒนา (Recommendations)</h4>
-          <ul>${pRecommendations.map(r => `<li>${r}</li>`).join('')}</ul>
-        </div>
-
-        <h3 style="color:#2c3e50; margin-top:25px;">📝 รายละเอียดคำถาม & คำตอบข้อสอบอัตนัย</h3>
-        <div>${subjectiveDetails}</div>
-      `;
-
-      document.getElementById("downloadIndividualPDFBtn").onclick = function() {
-        downloadIndividualPDF(name);
-      };
-
-      document.getElementById("individualModal").style.display = "block";
-    };
-
-    window.closeModal = function() {
-      document.getElementById("individualModal").style.display = "none";
-    };
-
-    function downloadIndividualPDF(candidateName) {
-      const element = document.getElementById("modalReportContent");
-      const opt = {
-        margin:       0.4,
-        filename:     `รายงานผลสอบ_${candidateName}.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2 },
-        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
-      };
-      html2pdf().set(opt).from(element).save();
+        `;
+      }).join("");
     }
 
     function renderChart(data) {
       const ctx = document.getElementById("scoreChart").getContext("2d");
-      const labels = data.map(r => r.name || r.user_email || 'N/A');
+      const labels = data.map(r => r.user_email);
       const scores = data.map(r => r.score);
-      
       if (window.scoreChartInstance) window.scoreChartInstance.destroy();
-      
       window.scoreChartInstance = new Chart(ctx, {
         type: "bar",
         data: {
@@ -309,16 +121,17 @@
           datasets: [{
             label: "คะแนนรวม",
             data: scores,
-            backgroundColor: "rgba(0, 122, 204, 0.75)",
-            borderColor: "rgba(0, 122, 204, 1)",
-            borderWidth: 1,
-            borderRadius: 6
+            backgroundColor: "rgba(0, 122, 204, 0.6)"
           }]
         },
         options: {
-          responsive: true,
-          plugins: { legend: { labels: { font: { family: 'Sarabun' } } } },
-          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+          animation: {
+            duration: 1000,
+            easing: "easeOutBounce"
+          },
+          scales: {
+            y: { beginAtZero: true }
+          }
         }
       });
     }
@@ -329,19 +142,12 @@
       const subjectiveTable = XLSX.utils.table_to_sheet(document.getElementById("subjectiveTable"));
       XLSX.utils.book_append_sheet(wb, quizTable, "ปรนัย");
       XLSX.utils.book_append_sheet(wb, subjectiveTable, "อัตนัย");
-      XLSX.writeFile(wb, "ผลการสอบรวม.xlsx");
+      XLSX.writeFile(wb, "ผลการสอบ.xlsx");
     }
 
     function downloadPDF() {
       const element = document.getElementById("dashboard");
-      const opt = {
-        margin:       0.3,
-        filename:     'แดชบอร์ดผลการสอบภาพรวม.pdf',
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2 },
-        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
-      };
-      html2pdf().set(opt).from(element).save();
+      html2pdf().from(element).save("ผลการสอบ.pdf");
     }
 
     window.addEventListener("DOMContentLoaded", () => {
@@ -351,225 +157,85 @@
       fetchData();
     });
   </script>
-
   <style>
     body {
       font-family: 'Sarabun', sans-serif;
-      background: #f4f7f9;
-      color: #333;
+      background: #f0f2f5;
       margin: 0;
-      padding: 30px 15px;
+      padding: 20px;
     }
-
-    #dashboard {
-      max-width: 1100px;
-      margin: 0 auto;
-      background: #ffffff;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-    }
-
-    h2 { text-align: center; color: #007acc; font-weight: 700; margin-top: 0; margin-bottom: 25px; }
-
-    h3 {
-      color: #2c3e50;
-      font-size: 1.15rem;
-      margin-top: 30px;
-      margin-bottom: 15px;
-      border-left: 4px solid #007acc;
-      padding-left: 10px;
-    }
-
-    .kpi-container {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 15px;
-      margin-bottom: 25px;
-    }
-
-    .kpi-card {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      padding: 15px;
-      border-radius: 8px;
+    h2 {
       text-align: center;
+      color: #007acc;
     }
-
-    .kpi-card .number { font-size: 1.8rem; font-weight: 700; color: #007acc; }
-    .kpi-card .label { font-size: 0.85rem; color: #64748b; }
-
     .search-box {
       display: flex;
-      gap: 12px;
+      gap: 10px;
       margin-bottom: 20px;
       justify-content: center;
-      flex-wrap: wrap;
-      background: #f8fafc;
-      padding: 15px;
-      border-radius: 8px;
-      border: 1px solid #e2e8f0;
     }
-
     input, button {
-      padding: 10px 16px;
-      font-size: 0.95rem;
-      font-family: 'Sarabun', sans-serif;
-      border-radius: 6px;
-      border: 1px solid #cbd5e1;
-      outline: none;
+      padding: 10px;
+      font-size: 1rem;
     }
-
-    input:focus { border-color: #007acc; box-shadow: 0 0 0 3px rgba(0, 122, 204, 0.15); }
-
-    button { background: #007acc; color: white; border: none; font-weight: 600; cursor: pointer; }
-    button:hover { background: #005999; }
-
-    .btn-group { display: flex; gap: 10px; justify-content: flex-end; margin-bottom: 20px; }
-    .btn-secondary { background: #22c55e; } .btn-secondary:hover { background: #16a34a; }
-    .btn-danger { background: #ef4444; } .btn-danger:hover { background: #dc2626; }
-
-    .btn-action {
-      background: #0284c7;
-      color: white;
-      border: none;
-      padding: 6px 12px;
-      font-size: 0.85rem;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .btn-action:hover { background: #0369a1; }
-
-    .chart-container { background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 25px; }
-
-    .swot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-    @media (max-width: 600px) { .swot-grid { grid-template-columns: 1fr; } }
-
-    .swot-card { padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
-    .swot-card.strength { background-color: #f0fdf4; border-color: #bbf7d0; }
-    .swot-card.strength h4 { color: #166534; margin-top: 0; }
-    .swot-card.weakness { background-color: #fef2f2; border-color: #fecaca; }
-    .swot-card.weakness h4 { color: #991b1b; margin-top: 0; }
-    .swot-card.recommendation { background-color: #eff6ff; border-color: #bfdbfe; }
-    .swot-card.recommendation h4 { color: #1e40af; margin-top: 0; }
-    .swot-card ul { margin: 0; padding-left: 20px; font-size: 0.9rem; line-height: 1.5; }
-
-    table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 25px; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; }
-    th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 0.95rem; vertical-align: top; }
-    th { background: #007acc; color: white; font-weight: 600; }
-    tr:last-child td { border-bottom: none; }
-    tr:hover td { background-color: #f8fafc; }
-
-    .badge-score { background-color: #e0f2fe; color: #0369a1; font-weight: bold; padding: 3px 8px; border-radius: 12px; }
-
-    .qa-item { background: #f8fafc; border-left: 3px solid #007acc; padding: 8px 12px; margin-bottom: 8px; border-radius: 0 6px 6px 0; font-size: 0.9rem; }
-    .qa-item:last-child { margin-bottom: 0; }
-    .qa-question { color: #0f172a; margin-bottom: 4px; }
-    .qa-answer { color: #334155; }
-
-    .modal {
-      display: none;
-      position: fixed;
-      z-index: 1000;
-      left: 0;
-      top: 0;
+    table {
       width: 100%;
-      height: 100%;
-      background-color: rgba(0,0,0,0.5);
-      overflow-y: auto;
+      border-collapse: collapse;
+      margin-bottom: 30px;
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
-
-    .modal-content {
-      background-color: #fff;
-      margin: 40px auto;
-      padding: 30px;
-      border-radius: 12px;
-      max-width: 800px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-      position: relative;
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
     }
-
-    .close-btn {
-      position: absolute;
-      right: 20px;
-      top: 15px;
-      font-size: 28px;
-      font-weight: bold;
-      color: #aaa;
-      cursor: pointer;
+    th {
+      background: #007acc;
+      color: white;
     }
-    .close-btn:hover { color: #333; }
-
-    .modal-actions {
+    canvas {
+      max-width: 100%;
+      margin-bottom: 30px;
+    }
+    .btn-group {
       display: flex;
-      justify-content: flex-end;
       gap: 10px;
-      margin-bottom: 15px;
+      justify-content: center;
+      margin-bottom: 30px;
     }
   </style>
 </head>
 <body>
   <div id="dashboard">
-    <h2>แดชบอร์ดผลการสอบและการวิเคราะห์</h2>
-    
+    <h2>แดชบอร์ดผลการสอบ</h2>
     <div class="search-box">
-      <input type="text" id="nameInput" placeholder="ค้นหาด้วยชื่อผู้ทำแบบทดสอบ">
+      <input type="text" id="emailInput" placeholder="ค้นหาอีเมลพนักงาน">
       <input type="date" id="dateInput">
       <button id="searchBtn">ค้นหา</button>
     </div>
-
     <div class="btn-group">
-      <button id="downloadExcelBtn" class="btn-secondary">ดาวน์โหลด Excel รวม</button>
-      <button id="downloadPDFBtn" class="btn-danger">ดาวน์โหลด PDF หน้าแดชบอร์ด</button>
+      <button id="downloadExcelBtn">ดาวน์โหลด Excel</button>
+      <button id="downloadPDFBtn">ดาวน์โหลด PDF</button>
     </div>
-
-    <div class="kpi-container">
-      <div class="kpi-card">
-        <div class="number" id="totalCandidates">0</div>
-        <div class="label">จำนวนผู้เข้าทำแบบทดสอบ</div>
-      </div>
-      <div class="kpi-card">
-        <div class="number" id="avgScore">0</div>
-        <div class="label">คะแนนเฉลี่ย (ปรนัย)</div>
-      </div>
-      <div class="kpi-card">
-        <div class="number" id="maxScore">0</div>
-        <div class="label">คะแนนสูงสุด</div>
-      </div>
-    </div>
-
-    <div class="chart-container">
-      <canvas id="scoreChart" height="100"></canvas>
-    </div>
-
-    <h3>สรุปการวิเคราะห์ผลการสอบภาพรวม</h3>
-    <div id="analysisBox"></div>
-
+    <canvas id="scoreChart" height="100"></canvas>
+    
     <h3>ตารางสรุปคะแนน (ข้อสอบปรนัย)</h3>
     <table id="quizTable">
       <thead>
-        <tr><th>#</th><th>ชื่อผู้ทำแบบทดสอบ</th><th>อีเมล</th><th>คะแนน</th><th>จำนวนข้อ</th><th>วันที่</th><th>วิเคราะห์</th></tr>
+        <tr><th>#</th><th>ชื่อผู้ทำแบบทดสอบ</th><th>อีเมล</th><th>คะแนน</th><th>จำนวนข้อ</th><th>วันที่ทำแบบทดสอบ</th></tr>
       </thead>
       <tbody id="quizTableBody"></tbody>
     </table>
 
-    <h3>ตารางคำตอบแบบละเอียด (ข้อสอบอัตนัย)</h3>
+    <h3>ตารางคำตอบ (ข้อสอบอัตนัย)</h3>
     <table id="subjectiveTable">
       <thead>
-        <tr><th style="width: 5%;">#</th><th style="width: 18%;">ชื่อผู้ทำแบบทดสอบ</th><th style="width: 18%;">อีเมล</th><th style="width: 38%;">คำถาม & คำตอบ</th><th style="width: 11%;">วันที่</th><th style="width: 10%;">วิเคราะห์</th></tr>
+        <tr><th style="width: 5%;">#</th><th style="width: 20%;">ชื่อผู้ทำแบบทดสอบ</th><th style="width: 20%;">อีเมล</th><th style="width: 40%;">คำถาม & คำตอบ</th><th style="width: 15%;">วันที่ทำแบบทดสอบ</th></tr>
       </thead>
       <tbody id="subjectiveTableBody"></tbody>
     </table>
-  </div>
-
-  <div id="individualModal" class="modal">
-    <div class="modal-content">
-      <span class="close-btn" onclick="closeModal()">&times;</span>
-      <div class="modal-actions">
-        <button id="downloadIndividualPDFBtn" class="btn-danger">📄 ดาวน์โหลด PDF รายบุคคล</button>
-      </div>
-      <div id="modalReportContent"></div>
-    </div>
   </div>
 </body>
 </html>
