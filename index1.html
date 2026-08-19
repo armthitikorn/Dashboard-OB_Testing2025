@@ -15,13 +15,13 @@
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno'
     );
 
-    // 📌 วางข้อความคำถามอัตนัยภาษาไทยจริงของคุณตามลำดับตรงนี้ได้เลยครับ
+    // 📌 วางข้อความคำถามอัตนัยภาษาไทยจริงตามลำดับ (แก้ไข Comma เรียบร้อยแล้ว)
     const QUESTIONS_LIST = [
       "คำถามอัตนัยข้อที่ 1 (ไม่สนใจประกันครับ/ค่ะ)",
       "คำถามอัตนัยข้อที่ 2 (มีประกันอยู่แล้วหลายตัว?)",
       "คำถามอัตนัยข้อที่ 3 (ไม่อยากเพิ่มภาระประกันอีก?)",
       "คำถามอัตนัยข้อที่ 4 (ไม่อยากซ้ำซ้อนกับของเดิม?)",
-      "คำถามอัตนัยข้อที่ 5 (ตอนนี้ไม่สะดวกคุยครับ/ค่ะ)"
+      "คำถามอัตนัยข้อที่ 5 (ตอนนี้ไม่สะดวกคุยครับ/ค่ะ)", // ✅ เติม Comma แล้ว
       "คำถามอัตนัยข้อที่ 6 (มีเอกสารส่งให้ดูก่อนไหม?)",
       "คำถามอัตนัยข้อที่ 7 (ขอปรึกษาที่บ้านก่อน?)",
       "คำถามอัตนัยข้อที่ 8 (ยังไม่ตัดสินใจครับ?)",
@@ -62,7 +62,7 @@
         quizTable.appendChild(row);
       });
 
-      // 2. ตารางอัตนัย (เปลี่ยนจาก JSON.stringify เป็น formatAnswersHTML)
+      // 2. ตารางอัตนัย
       subjectiveData.forEach((r, i) => {
         const row = document.createElement("tr");
         const formattedAnswers = formatAnswersHTML(r.answers);
@@ -157,6 +157,7 @@
       fetchData();
     });
   </script>
+
   <style>
     body {
       font-family: 'Sarabun', sans-serif;
