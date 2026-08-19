@@ -42,7 +42,7 @@
       const { data: quizResults } = await supabase.from("quiz_results").select("*");
       const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*");
 
-      // ✅ แก้ไขเงื่อนไขการค้นหา: ค้นได้ทั้ง 'ชื่อ (name)' และ 'อีเมล (user_email)'
+      // ✅ ค้นหาได้ทั้ง 'ชื่อ (name)' และ 'อีเมล (user_email)'
       globalQuizData = (quizResults || []).filter(r => {
         const matchName = r.name && r.name.toLowerCase().includes(keyword);
         const matchEmail = r.user_email && r.user_email.toLowerCase().includes(keyword);
@@ -199,6 +199,7 @@
       `;
     }
 
+    // 🔥 วิเคราะห์รายบุคคลด้วย Keyword + ปรนัย
     window.openIndividualModal = function(identifier) {
       const userQuiz = globalQuizData.find(r => (r.name === identifier || r.user_email === identifier));
       const userSubjective = globalSubjectiveData.find(r => (r.name === identifier || r.user_email === identifier));
@@ -218,29 +219,71 @@
       let pWeaknesses = [];
       let pRecommendations = [];
 
+      // 1. วิเคราะห์จากคะแนนปรนัย
       if (userQuiz) {
         if (percent >= 80) {
-          pStrengths.push(`ทำคะแนนสอบปรนัยได้ดีเยี่ยม (${score}/${total} คิดเป็น ${percent}%)`);
-          pRecommendations.push(`มีความเข้าใจเนื้อหาแม่นยำ พร้อมประยุกต์ใช้งานจริง`);
+          pStrengths.push(`มีความรู้ความเข้าใจในผลิตภัณฑ์/เงื่อนไขประกันในระดับดีเยี่ยม (${score}/${total} คะแนน)`);
         } else if (percent >= 50) {
-          pStrengths.push(`ผ่านเกณฑ์การทดสอบปรนัยพื้นฐาน (${percent}%)`);
-          pWeaknesses.push(`ยังมีจุดคลาดเคลื่อนบางข้อ ทบทวนเพิ่มเติมจะช่วยเพิ่มความแม่นยำ`);
-          pRecommendations.push(`ควรทบทวนข้อสอบที่ตอบผิดเพื่อเก็บรายละเอียด`);
+          pStrengths.push(`มีความรู้พื้นฐานเกี่ยวกับผลิตภัณฑ์อยู่ในเกณฑ์ผ่าน (${percent}%)`);
+          pWeaknesses.push(`ยังมีข้อผิดพลาดในข้อสอบปรนัยบางส่วน คิดเป็น ${100 - percent}% ของเนื้อหาทั้งหมด`);
         } else {
-          pWeaknesses.push(`คะแนนสอบปรนัยต่ำกว่าเกณฑ์มาตรฐาน (${percent}%)`);
-          pRecommendations.push(`จัดทำแผนการเรียนรู้เสริม (Remedial Training) และทำการทดสอบซ้ำ`);
+          pWeaknesses.push(`คะแนนความรู้ปรนัยต่ำกว่าเกณฑ์มาตรฐาน (${percent}%) อาจยังไม่แม่นยำในเงื่อนไขกรมธรรม์`);
         }
       }
 
-      let subjectiveDetails = "-";
-      if (userSubjective) {
-        subjectiveDetails = formatAnswersHTML(userSubjective.answers);
+      // 2. วิเคราะห์คำตอบอัตนัยรายบุคคล (Keyword Analysis)
+      if (userSubjective && userSubjective.answers) {
+        let rawText = "";
+        
+        if (Array.isArray(userSubjective.answers)) {
+          rawText = userSubjective.answers.map(a => typeof a === 'object' ? (a.answer || a.a || JSON.stringify(a)) : a).join(" ");
+        } else if (typeof userSubjective.answers === 'object') {
+          rawText = Object.values(userSubjective.answers).join(" ");
+        } else {
+          rawText = String(userSubjective.answers);
+        }
+
+        const lowerText = rawText.toLowerCase();
+
+        if (rawText.length < 50) {
+          pWeaknesses.push("การตอบคำถามอัตนัยสั้นเกินไป ละเลยการอธิบายรายละเอียดเพื่อสร้างความน่าเชื่อถือให้ลูกค้า");
+          pRecommendations.push("ฝึกฝนการตอบข้อโต้แย้งโดยใช้โครงสร้าง FAB (Feature-Advantage-Benefit) เพื่อให้คำตอบมีน้ำหนักขึ้น");
+        } else {
+          pStrengths.push("มีความพยายามในการอธิบายรายละเอียดข้อตอบโต้แย้งได้อย่างครอบคลุม");
+        }
+
+        if (lowerText.includes("แพง") || lowerText.includes("เงิน") || lowerText.includes("ลด")) {
+          pWeaknesses.push("จุดอ่อนการรับมือข้อโต้แย้งเรื่อง 'เบี้ยประกันแพง': มุ่งเน้นการอธิบายราคามากกว่าการชี้ให้เห็น 'มูลค่าและสิทธิประโยชน์'");
+          pRecommendations.push("ทบทวนเทคนิคการซอยเฉลี่ยเบี้ยประกันเป็นรายวัน (Cost Break Down) เพื่อให้ลูกค้ารู้สึกคุ้มค่า");
+        }
+
+        if (lowerText.includes("ส่งเอกสาร") || lowerText.includes("ส่งไลน์") || lowerText.includes("ส่งไลน์ไว้ก่อน")) {
+          pWeaknesses.push("จุดอ่อนการปิดการขายทันที: มีแนวโน้มยอมตามลูกค้าเมื่อขอเอกสาร ทำให้เสียโอกาสสรุปจบในสาย");
+          pRecommendations.push("เพิ่มทักษะการสรุปประเด็นสำคัญในสายก่อนส่งเอกสาร เพื่อกระตุ้นการตัดสินใจ (Closing Skill)");
+        }
+
+        if (lowerText.includes("ปรึกษา") || lowerText.includes("ถามแฟน") || lowerText.includes("ถามแม่")) {
+          pWeaknesses.push("การจัดการเมื่อลูกค้าขอปรึกษาผู้อื่น: ยังขาดการถามคำถามเพื่อเจาะลึกข้อกังวลที่แท้จริงของลูกค้า");
+          pRecommendations.push("ฝึกใช้คำถามปลายเปิดเพื่อดึงข้อกังวลที่แท้จริง (Isolate Objection) ก่อนที่ลูกค้าจะวางสาย");
+        }
+      } else {
+        pWeaknesses.push("ไม่มีข้อมูลคำตอบอัตนัยสำหรับการวิเคราะห์เชิงลึก");
       }
+
+      if (pRecommendations.length === 0) {
+        pRecommendations.push("เข้าร่วม Role-play จำลองสถานการณ์ขายจริงเพื่อเพิ่มความคล่องแคล่วในการรับมือข้อโต้แย้ง");
+      }
+
+      if (pStrengths.length === 0) {
+        pStrengths.push("มีความตั้งใจในการทำแบบทดสอบจนเสร็จสิ้นกระบวนการ");
+      }
+
+      let subjectiveDetails = userSubjective ? formatAnswersHTML(userSubjective.answers) : "-";
 
       const content = document.getElementById("modalReportContent");
       content.innerHTML = `
         <div style="border-bottom: 2px solid #007acc; padding-bottom: 10px; margin-bottom: 20px;">
-          <h2 style="color:#007acc; margin:0;">รายงานสรุปผลการสอบรายบุคคล</h2>
+          <h2 style="color:#007acc; margin:0;">รายงานสรุปผลการสอบและวิเคราะห์ทักษะรายบุคคล</h2>
           <p style="margin:5px 0 0 0; color:#64748b;">ข้อมูล ณ วันที่: ${new Date().toLocaleDateString('th-TH')}</p>
         </div>
 
@@ -250,20 +293,20 @@
           <p style="margin:4px 0;"><strong>คะแนนปรนัย:</strong> <span style="color:#007acc; font-weight:bold;">${score} / ${total} (${percent}%)</span></p>
         </div>
 
-        <h3 style="color:#2c3e50;">📌 ผลการวิเคราะห์ทักษะ (Individual SWOT)</h3>
+        <h3 style="color:#2c3e50;">📌 ผลการวิเคราะห์ทักษะรายบุคคล (Individual Analysis)</h3>
         <div class="swot-grid">
           <div class="swot-card strength">
-            <h4>💪 จุดแข็ง (Strengths)</h4>
-            <ul>${pStrengths.length ? pStrengths.map(s => `<li>${s}</li>`).join('') : '<li>-</li>'}</ul>
+            <h4>💪 จุดแข็งที่พบ (Strengths)</h4>
+            <ul>${pStrengths.map(s => `<li>${s}</li>`).join('')}</ul>
           </div>
           <div class="swot-card weakness">
-            <h4>⚠️ จุดที่ควรปรับปรุง (Weaknesses)</h4>
-            <ul>${pWeaknesses.length ? pWeaknesses.map(w => `<li>${w}</li>`).join('') : '<li>ไม่มีจุดอ่อนเด่นชัด</li>'}</ul>
+            <h4>⚠️ จุดที่ควรปรับปรุง/วิเคราะห์ความเสี่ยง (Weaknesses)</h4>
+            <ul>${pWeaknesses.map(w => `<li>${w}</li>`).join('')}</ul>
           </div>
         </div>
 
         <div class="swot-card recommendation" style="margin-top:15px;">
-          <h4>💡 คำแนะนำการพัฒนา (Recommendations)</h4>
+          <h4>💡 แนวทางการพัฒนาเฉพาะบุคคล (Action Plan)</h4>
           <ul>${pRecommendations.map(r => `<li>${r}</li>`).join('')}</ul>
         </div>
 
@@ -561,6 +604,7 @@
     </table>
   </div>
 
+  <!-- Modal สำหรับแสดงผลการวิเคราะห์รายบุคคล -->
   <div id="individualModal" class="modal">
     <div class="modal-content">
       <span class="close-btn" onclick="closeModal()">&times;</span>
