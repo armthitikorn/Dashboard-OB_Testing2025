@@ -107,28 +107,54 @@
       }
     }
 
-    // Helper ในการแปลงชุดคำตอบ
+    // Helper ในการแปลงชุดคำตอบข้อสอบอัตนัย
     function formatAnswersHTML(answers) {
+      if (!answers) return "<span style='color:#888;'>ไม่มีข้อมูลคำตอบ</span>";
+
       if (Array.isArray(answers)) {
-        return answers.map((item, idx) => `
-          <div class="qa-item">
-            <div class="qa-question"><strong>ข้อที่ ${idx + 1}:</strong> ${item.question || item.q || 'คำถามไม่ระบุ'}</div>
-            <div class="qa-answer"><strong>คำตอบ:</strong> ${item.answer || item.a || '-'}</div>
-            ${item.score !== undefined ? `<div class="qa-score">คะแนน: ${item.score}</div>` : ''}
-          </div>
-        `).join("");
-      } else if (typeof answers === 'object' && answers !== null) {
-        return Object.entries(answers).map(([q, a], idx) => `
-          <div class="qa-item">
-            <div class="qa-question"><strong>ข้อที่ ${idx + 1}:</strong> ${q}</div>
-            <div class="qa-answer"><strong>คำตอบ:</strong> ${typeof a === 'object' ? JSON.stringify(a) : a}</div>
-          </div>
-        `).join("");
+        if (answers.length === 0) return "<span style='color:#888;'>ไม่มีรายการคำตอบ</span>";
+
+        return answers.map((item, idx) => {
+          let qText = "";
+          let aText = "";
+          let scoreText = "";
+
+          if (typeof item === 'object' && item !== null) {
+            qText = item.question || item.q || item.title || item.prompt || `คำถามข้อที่ ${idx + 1}`;
+            aText = item.answer || item.a || item.response || item.text || JSON.stringify(item);
+            if (item.score !== undefined) scoreText = `<div class="qa-score">คะแนน: ${item.score}</div>`;
+          } else {
+            qText = `คำถามข้อที่ ${idx + 1}`;
+            aText = item;
+          }
+
+          return `
+            <div class="qa-item">
+              <div class="qa-question"><strong>${qText.startsWith('คำถาม') ? qText : `ข้อที่ ${idx + 1}: ${qText}`}</strong></div>
+              <div class="qa-answer"><strong>คำตอบ:</strong> ${aText || '-'}</div>
+              ${scoreText}
+            </div>
+          `;
+        }).join("");
+      } 
+      else if (typeof answers === 'object' && answers !== null) {
+        const entries = Object.entries(answers);
+        if (entries.length === 0) return "<span style='color:#888;'>ไม่มีข้อมูล</span>";
+
+        return entries.map(([q, a], idx) => {
+          const aText = (typeof a === 'object' && a !== null) ? JSON.stringify(a) : a;
+          return `
+            <div class="qa-item">
+              <div class="qa-question"><strong>ข้อที่ ${idx + 1}:</strong> ${q}</div>
+              <div class="qa-answer"><strong>คำตอบ:</strong> ${aText || '-'}</div>
+            </div>
+          `;
+        }).join("");
       }
-      return `<pre class="json-preview">${JSON.stringify(answers, null, 2)}</pre>`;
+
+      return `<div class="qa-item"><div class="qa-answer"><strong>คำตอบ:</strong> ${answers}</div></div>`;
     }
 
-    // วิเคราะห์ภาพรวม
     function renderOverallAnalysis(quizData, subjectiveData) {
       const container = document.getElementById("analysisBox");
       if (quizData.length === 0 && subjectiveData.length === 0) {
@@ -164,7 +190,6 @@
       `;
     }
 
-    // เปิด Modal วิเคราะห์รายบุคคล
     window.openIndividualModal = function(identifier) {
       const userQuiz = globalQuizData.find(r => (r.name === identifier || r.user_email === identifier));
       const userSubjective = globalSubjectiveData.find(r => (r.name === identifier || r.user_email === identifier));
@@ -180,7 +205,6 @@
       const total = userQuiz ? userQuiz.total_questions : '-';
       const percent = (userQuiz && userQuiz.total_questions) ? ((userQuiz.score / userQuiz.total_questions) * 100).toFixed(1) : 0;
 
-      // วิเคราะห์จุดแข็งจุดอ่อนรายบุคคล
       let pStrengths = [];
       let pWeaknesses = [];
       let pRecommendations = [];
@@ -204,7 +228,6 @@
         subjectiveDetails = formatAnswersHTML(userSubjective.answers);
       }
 
-      // Render ลงใน Modal
       const content = document.getElementById("modalReportContent");
       content.innerHTML = `
         <div style="border-bottom: 2px solid #007acc; padding-bottom: 10px; margin-bottom: 20px;">
@@ -235,11 +258,10 @@
           <ul>${pRecommendations.map(r => `<li>${r}</li>`).join('')}</ul>
         </div>
 
-        <h3 style="color:#2c3e50; margin-top:25px;">📝 รายละเอียดคำตอบข้อสอบอัตนัย</h3>
+        <h3 style="color:#2c3e50; margin-top:25px;">📝 รายละเอียดคำถาม & คำตอบข้อสอบอัตนัย</h3>
         <div>${subjectiveDetails}</div>
       `;
 
-      // เก็บชื่อไว้ตั้งชื่อไฟล์ PDF
       document.getElementById("downloadIndividualPDFBtn").onclick = function() {
         downloadIndividualPDF(name);
       };
@@ -410,7 +432,6 @@
 
     .chart-container { background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 25px; }
 
-    /* SWOT Grid Styles */
     .swot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
     @media (max-width: 600px) { .swot-grid { grid-template-columns: 1fr; } }
 
@@ -423,7 +444,6 @@
     .swot-card.recommendation h4 { color: #1e40af; margin-top: 0; }
     .swot-card ul { margin: 0; padding-left: 20px; font-size: 0.9rem; line-height: 1.5; }
 
-    /* Table Styles */
     table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 25px; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; }
     th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 0.95rem; vertical-align: top; }
     th { background: #007acc; color: white; font-weight: 600; }
@@ -434,11 +454,10 @@
 
     .qa-item { background: #f8fafc; border-left: 3px solid #007acc; padding: 8px 12px; margin-bottom: 8px; border-radius: 0 6px 6px 0; font-size: 0.9rem; }
     .qa-item:last-child { margin-bottom: 0; }
-    .qa-question { color: #1e293b; }
-    .qa-answer { color: #475569; margin-top: 3px; }
+    .qa-question { color: #0f172a; margin-bottom: 4px; }
+    .qa-answer { color: #334155; }
     .qa-score { color: #0284c7; font-weight: 600; font-size: 0.8rem; margin-top: 2px; }
 
-    /* Modal Pop-up Styles */
     .modal {
       display: none;
       position: fixed;
@@ -534,16 +553,13 @@
     </table>
   </div>
 
-  <!-- Modal สำหรับวิเคราะห์รายบุคคล -->
   <div id="individualModal" class="modal">
     <div class="modal-content">
       <span class="close-btn" onclick="closeModal()">&times;</span>
       <div class="modal-actions">
         <button id="downloadIndividualPDFBtn" class="btn-danger">📄 ดาวน์โหลด PDF รายบุคคล</button>
       </div>
-      <div id="modalReportContent">
-        <!-- เนื้อหารายงานวิเคราะห์รายบุคคลจะถูกฉีดใส่ที่นี่ -->
-      </div>
+      <div id="modalReportContent"></div>
     </div>
   </div>
 </body>
