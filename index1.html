@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>แดชบอร์ดผลการสอบ</title>
+  <title>แดชบอร์ดผลการสอบและการวิเคราะห์</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -19,14 +19,12 @@
     );
 
     async function fetchData() {
-      // เปลี่ยนแปลงการดึงค่าจาก nameInput
       const name = document.getElementById("nameInput").value.trim().toLowerCase();
       const date = document.getElementById("dateInput").value.trim();
 
       const { data: quizResults } = await supabase.from("quiz_results").select("*");
       const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*");
 
-      // เปลี่ยนเงื่อนไขกรองข้อมูลให้ค้นหาจาก r.name แทน r.user_email
       const filteredQuiz = (quizResults || []).filter(r =>
         (!name || (r.name && r.name.toLowerCase().includes(name))) &&
         (!date || (r.created_at && r.created_at.startsWith(date)))
@@ -37,8 +35,28 @@
         (!date || (r.created_at && r.created_at.startsWith(date)))
       );
 
+      renderSummaryStats(filteredQuiz);
       renderTables(filteredQuiz, filteredSubjective);
+      renderAnalysis(filteredQuiz, filteredSubjective);
       renderChart(filteredQuiz);
+    }
+
+    // คำนวณภาพรวม KPI
+    function renderSummaryStats(quizData) {
+      if (!quizData || quizData.length === 0) {
+        document.getElementById("avgScore").innerText = "0";
+        document.getElementById("maxScore").innerText = "0";
+        document.getElementById("totalCandidates").innerText = "0";
+        return;
+      }
+      const total = quizData.length;
+      const sum = quizData.reduce((acc, curr) => acc + (curr.score || 0), 0);
+      const avg = (sum / total).toFixed(1);
+      const max = Math.max(...quizData.map(r => r.score || 0));
+
+      document.getElementById("avgScore").innerText = avg;
+      document.getElementById("maxScore").innerText = max;
+      document.getElementById("totalCandidates").innerText = total;
     }
 
     function renderTables(quizData, subjectiveData) {
@@ -47,6 +65,7 @@
       quizTable.innerHTML = "";
       subjectiveTable.innerHTML = "";
 
+      // 1. ตารางปรนัย
       if (quizData.length === 0) {
         quizTable.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#888;">ไม่พบข้อมูล</td></tr>`;
       } else {
@@ -57,23 +76,46 @@
             <td><strong>${r.name || 'N/A'}</strong></td>
             <td>${r.user_email || '-'}</td>
             <td><span class="badge-score">${r.score}</span></td>
-            <td>${r.total_questions}</td>
+            <td>${r.total_questions || '-'}</td>
             <td>${r.created_at ? new Date(r.created_at).toLocaleString('th-TH') : '-'}</td>
           `;
           quizTable.appendChild(row);
         });
       }
 
+      // 2. ตารางอัตนัย (แยกข้อคำถาม-คำตอบให้อ่านง่าย)
       if (subjectiveData.length === 0) {
         subjectiveTable.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#888;">ไม่พบข้อมูล</td></tr>`;
       } else {
         subjectiveData.forEach((r, i) => {
           const row = document.createElement("tr");
+          
+          // แปลง JSON ให้เป็นรายการ คำถาม-คำตอบ
+          let formattedAnswers = "-";
+          if (Array.isArray(r.answers)) {
+            formattedAnswers = r.answers.map((item, idx) => `
+              <div class="qa-item">
+                <div class="qa-question"><strong>ข้อที่ ${idx + 1}:</strong> ${item.question || item.q || 'คำถามไม่ระบุ'}</div>
+                <div class="qa-answer"><strong>คำตอบ:</strong> ${item.answer || item.a || '-'}</div>
+                ${item.score !== undefined ? `<div class="qa-score">คะแนน: ${item.score}</div>` : ''}
+              </div>
+            `).join("");
+          } else if (typeof r.answers === 'object' && r.answers !== null) {
+            formattedAnswers = Object.entries(r.answers).map(([q, a], idx) => `
+              <div class="qa-item">
+                <div class="qa-question"><strong>ข้อที่ ${idx + 1}:</strong> ${q}</div>
+                <div class="qa-answer"><strong>คำตอบ:</strong> ${typeof a === 'object' ? JSON.stringify(a) : a}</div>
+              </div>
+            `).join("");
+          } else {
+            formattedAnswers = `<pre class="json-preview">${JSON.stringify(r.answers, null, 2)}</pre>`;
+          }
+
           row.innerHTML = `
             <td>${i + 1}</td>
             <td><strong>${r.name || 'N/A'}</strong></td>
             <td>${r.user_email || '-'}</td>
-            <td><pre class="json-preview">${JSON.stringify(r.answers, null, 2)}</pre></td>
+            <td>${formattedAnswers}</td>
             <td>${r.created_at ? new Date(r.created_at).toLocaleString('th-TH') : '-'}</td>
           `;
           subjectiveTable.appendChild(row);
@@ -81,9 +123,83 @@
       }
     }
 
+    // สรุปผลวิเคราะห์ จุดแข็ง - จุดอ่อน
+    function renderAnalysis(quizData, subjectiveData) {
+      const container = document.getElementById("analysisBox");
+      if (quizData.length === 0 && subjectiveData.length === 0) {
+        container.innerHTML = "<p style='color:#888;'>ไม่มีข้อมูลเพียงพอสำหรับการวิเคราะห์</p>";
+        return;
+      }
+
+      let strengths = [];
+      let weaknesses = [];
+      let recommendations = [];
+
+      // ประมวลผลจากปรนัย
+      if (quizData.length > 0) {
+        const scores = quizData.map(r => (r.score / (r.total_questions || 1)) * 100);
+        const avgPercentage = scores.reduce((a, b) => a + b, 0) / scores.length;
+
+        if (avgPercentage >= 75) {
+          strengths.push(`ผู้เข้าสอบส่วนใหญ่เข้าใจเนื้อหาหลักได้ดีเยี่ยม (คะแนนเฉลี่ยภาพรวมอยู่ที่ ${avgPercentage.toFixed(1)}%)`);
+        } else if (avgPercentage >= 50) {
+          strengths.push(`ผู้เข้าสอบส่วนใหญ่ผ่านเกณฑ์มาตรฐานพื้นฐาน (คะแนนเฉลี่ย ${avgPercentage.toFixed(1)}%)`);
+          weaknesses.push(`ยังมีช่องว่างในการพัฒนาความแม่นยำเพื่อยกระดับคะแนนให้เกิน 75%`);
+        } else {
+          weaknesses.push(`คะแนนเฉลี่ยภาพรวมค่อนข้างต่ำ (${avgPercentage.toFixed(1)}%) สะท้อนว่าผู้สอบยังไม่เข้าใจเนื้อหาหลัก`);
+          recommendations.push(`ควรทบทวนเนื้อหาบทเรียนย้อนหลัง หรือจัดปูพื้นฐานใหม่เพิ่มเติม`);
+        }
+      }
+
+      // ประมวลผลจากอัตนัย (วิเคราะห์ความยาวและความสมบูรณ์ของคำตอบ)
+      if (subjectiveData.length > 0) {
+        let totalWords = 0;
+        let count = 0;
+
+        subjectiveData.forEach(item => {
+          if (Array.isArray(item.answers)) {
+            item.answers.forEach(a => {
+              const text = a.answer || a.a || '';
+              totalWords += text.length;
+              count++;
+            });
+          }
+        });
+
+        const avgLength = count > 0 ? totalWords / count : 0;
+        if (avgLength > 50) {
+          strengths.push(`การตอบข้อสอบอัตนัยมีรายละเอียดค่อนข้างครบถ้วน (เฉลี่ย ${Math.round(avgLength)} ตัวอักษร/ข้อ)`);
+        } else {
+          weaknesses.push(`คำตอบข้อสอบอัตนัยค่อนข้างสั้นหรือกระชับเกินไป อาจขาดการอธิบายเหตุผลประกอบ`);
+          recommendations.push(`เน้นย้ำให้ผู้สอบอธิบายเหตุผลหรือยกตัวอย่างประกอบในข้อสอบอัตนัยเพิ่มขึ้น`);
+        }
+      }
+
+      if (recommendations.length === 0) {
+        recommendations.push(`ควรรักษาสภาพแวดล้อมการเรียนรู้และเสริมโจทย์ท้าทายระดับสูงขึ้น`);
+      }
+
+      // แสดงผลในหน้าเว็บ
+      container.innerHTML = `
+        <div class="swot-grid">
+          <div class="swot-card strength">
+            <h4>💪 จุดแข็ง (Strengths)</h4>
+            <ul>${strengths.map(s => `<li>${s}</li>`).join('')}</ul>
+          </div>
+          <div class="swot-card weakness">
+            <h4>⚠️ จุดอ่อน / ข้อควรปรับปรุง (Weaknesses)</h4>
+            <ul>${weaknesses.length ? weaknesses.map(w => `<li>${w}</li>`).join('') : '<li>ยังไม่พบจุดอ่อนที่เด่นชัด</li>'}</ul>
+          </div>
+        </div>
+        <div class="swot-card recommendation">
+          <h4>💡 ข้อเสนอแนะเพื่อการพัฒนา (Recommendations)</h4>
+          <ul>${recommendations.map(r => `<li>${r}</li>`).join('')}</ul>
+        </div>
+      `;
+    }
+
     function renderChart(data) {
       const ctx = document.getElementById("scoreChart").getContext("2d");
-      // แสดงชื่อบนกราฟแทนอีเมล (ถ้าไม่มีชื่อให้ใช้อีเมลหรือ N/A)
       const labels = data.map(r => r.name || r.user_email || 'N/A');
       const scores = data.map(r => r.score);
       
@@ -124,14 +240,14 @@
       const subjectiveTable = XLSX.utils.table_to_sheet(document.getElementById("subjectiveTable"));
       XLSX.utils.book_append_sheet(wb, quizTable, "ปรนัย");
       XLSX.utils.book_append_sheet(wb, subjectiveTable, "อัตนัย");
-      XLSX.writeFile(wb, "ผลการสอบ.xlsx");
+      XLSX.writeFile(wb, "ผลการสอบและการวิเคราะห์.xlsx");
     }
 
     function downloadPDF() {
       const element = document.getElementById("dashboard");
       const opt = {
         margin:       0.3,
-        filename:     'ผลการสอบ.pdf',
+        filename:     'ผลการสอบและการวิเคราะห์.pdf',
         image:        { type: 'jpeg', quality: 0.98 },
         html2canvas:  { scale: 2 },
         jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
@@ -143,7 +259,7 @@
       document.getElementById("searchBtn").addEventListener("click", fetchData);
       document.getElementById("downloadExcelBtn").addEventListener("click", downloadExcel);
       document.getElementById("downloadPDFBtn").addEventListener("click", downloadPDF);
-      fetchData(); // โหลดข้อมูลเบื้องต้นทันทีที่เปิดหน้า
+      fetchData();
     });
   </script>
 
@@ -180,6 +296,33 @@
       margin-bottom: 15px;
       border-left: 4px solid #007acc;
       padding-left: 10px;
+    }
+
+    /* Stat Cards Header */
+    .kpi-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 25px;
+    }
+
+    .kpi-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .kpi-card .number {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: #007acc;
+    }
+
+    .kpi-card .label {
+      font-size: 0.85rem;
+      color: #64748b;
     }
 
     .search-box {
@@ -228,19 +371,11 @@
       margin-bottom: 20px;
     }
 
-    .btn-secondary {
-      background: #22c55e;
-    }
-    .btn-secondary:hover {
-      background: #16a34a;
-    }
+    .btn-secondary { background: #22c55e; }
+    .btn-secondary:hover { background: #16a34a; }
 
-    .btn-danger {
-      background: #ef4444;
-    }
-    .btn-danger:hover {
-      background: #dc2626;
-    }
+    .btn-danger { background: #ef4444; }
+    .btn-danger:hover { background: #dc2626; }
 
     .chart-container {
       background: #fff;
@@ -250,6 +385,41 @@
       margin-bottom: 25px;
     }
 
+    /* Analysis Box (SWOT) Styles */
+    .swot-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+
+    @media (max-width: 600px) {
+      .swot-grid { grid-template-columns: 1fr; }
+    }
+
+    .swot-card {
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .swot-card.strength { background-color: #f0fdf4; border-color: #bbf7d0; }
+    .swot-card.strength h4 { color: #166534; margin-top: 0; }
+
+    .swot-card.weakness { background-color: #fef2f2; border-color: #fecaca; }
+    .swot-card.weakness h4 { color: #991b1b; margin-top: 0; }
+
+    .swot-card.recommendation { background-color: #eff6ff; border-color: #bfdbfe; }
+    .swot-card.recommendation h4 { color: #1e40af; margin-top: 0; }
+
+    .swot-card ul {
+      margin: 0;
+      padding-left: 20px;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    /* Table Styles */
     table {
       width: 100%;
       border-collapse: separate;
@@ -266,6 +436,7 @@
       text-align: left;
       border-bottom: 1px solid #e2e8f0;
       font-size: 0.95rem;
+      vertical-align: top;
     }
 
     th {
@@ -274,13 +445,8 @@
       font-weight: 600;
     }
 
-    tr:last-child td {
-      border-bottom: none;
-    }
-
-    tr:hover td {
-      background-color: #f8fafc;
-    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background-color: #f8fafc; }
 
     .badge-score {
       background-color: #e0f2fe;
@@ -289,6 +455,20 @@
       padding: 3px 8px;
       border-radius: 12px;
     }
+
+    /* Q&A Item Box in Table */
+    .qa-item {
+      background: #f8fafc;
+      border-left: 3px solid #007acc;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      border-radius: 0 6px 6px 0;
+      font-size: 0.9rem;
+    }
+    .qa-item:last-child { margin-bottom: 0; }
+    .qa-question { color: #1e293b; }
+    .qa-answer { color: #475569; margin-top: 3px; }
+    .qa-score { color: #0284c7; font-weight: 600; font-size: 0.8rem; margin-top: 2px; }
 
     .json-preview {
       margin: 0;
@@ -303,10 +483,9 @@
 </head>
 <body>
   <div id="dashboard">
-    <h2>แดชบอร์ดผลการสอบ</h2>
+    <h2>แดชบอร์ดผลการสอบและการวิเคราะห์</h2>
     
     <div class="search-box">
-      <!-- เปลี่ยนจาก emailInput เป็น nameInput -->
       <input type="text" id="nameInput" placeholder="ค้นหาด้วยชื่อผู้ทำแบบทดสอบ">
       <input type="date" id="dateInput">
       <button id="searchBtn">ค้นหา</button>
@@ -317,9 +496,29 @@
       <button id="downloadPDFBtn" class="btn-danger">ดาวน์โหลด PDF</button>
     </div>
 
+    <!-- KPI Summary Cards -->
+    <div class="kpi-container">
+      <div class="kpi-card">
+        <div class="number" id="totalCandidates">0</div>
+        <div class="label">จำนวนผู้เข้าทำแบบทดสอบ</div>
+      </div>
+      <div class="kpi-card">
+        <div class="number" id="avgScore">0</div>
+        <div class="label">คะแนนเฉลี่ย (ปรนัย)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="number" id="maxScore">0</div>
+        <div class="label">คะแนนสูงสุด</div>
+      </div>
+    </div>
+
     <div class="chart-container">
       <canvas id="scoreChart" height="100"></canvas>
     </div>
+
+    <!-- SWOT Analysis Section -->
+    <h3>การวิเคราะห์ผลการสอบ (จุดแข็ง / จุดอ่อน)</h3>
+    <div id="analysisBox"></div>
 
     <h3>ตารางสรุปคะแนน (ข้อสอบปรนัย)</h3>
     <table id="quizTable">
@@ -329,10 +528,10 @@
       <tbody id="quizTableBody"></tbody>
     </table>
 
-    <h3>ตารางคำตอบ (ข้อสอบอัตนัย)</h3>
+    <h3>ตารางคำตอบแบบละเอียด (ข้อสอบอัตนัย)</h3>
     <table id="subjectiveTable">
       <thead>
-        <tr><th>#</th><th>ชื่อผู้ทำแบบทดสอบ</th><th>อีเมล</th><th>คำตอบ</th><th>วันที่ทำแบบทดสอบ</th></tr>
+        <tr><th style="width: 5%;">#</th><th style="width: 20%;">ชื่อผู้ทำแบบทดสอบ</th><th style="width: 20%;">อีเมล</th><th style="width: 40%;">คำถาม & คำตอบ</th><th style="width: 15%;">วันที่ทำแบบทดสอบ</th></tr>
       </thead>
       <tbody id="subjectiveTableBody"></tbody>
     </table>
