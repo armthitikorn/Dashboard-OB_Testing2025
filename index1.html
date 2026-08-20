@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>แดชบอร์ดผลการสอบและการวิเคราะห์</title>
+  
+  <!-- Fonts & Libraries -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -13,10 +15,11 @@
   
   <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
-    const supabase = createClient(
-      'https://wzwyotzzxycqfwercakh.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno'
-    );
+
+    // 📌 Supabase Configuration
+    const supabaseUrl = 'https://wzwyotzzxycqfwercakh.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno';
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const QUESTIONS_LIST = [
       "คำถามอัตนัยข้อที่ 1 (ไม่สนใจประกันครับ/ค่ะ)",
@@ -34,35 +37,61 @@
     let globalQuizData = [];
     let globalSubjectiveData = [];
 
+    // 📌 ฟังก์ชันดึงข้อมูลแบบ FULL
     async function fetchData() {
       const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
       const date = document.getElementById("dateInput").value.trim();
 
       try {
+        // ดึงข้อมูลจาก Supabase ทั้ง 3 ตาราง
         const { data: users } = await supabase.from("users").select("*");
-        const { data: quizResults } = await supabase.from("quiz_results").select("*");
-        const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*");
+        const { data: quizResults, error: quizError } = await supabase.from("quiz_results").select("*").order('created_at', { ascending: false });
+        const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*").order('created_at', { ascending: false });
 
+        if (quizError) {
+          console.error("Error quiz_results:", quizError);
+        }
+
+        // Map ข้อมูล User ตาม Email ไว้เทียบสำรอง
         const userMap = {};
         (users || []).forEach(u => {
           if (u.email) userMap[u.email.toLowerCase().trim()] = u;
         });
 
-        // 🔥 ดึงประสบการณ์จาก r.experience ( quiz_results ) เป็นลำดับแรก
+        // 📌 ฟังก์ชันจัดการ Mapping ชื่อ และ Experience
         const mapData = (list) => (list || []).map(r => {
           const emailKey = (r.user_email || r.email || '').toLowerCase().trim();
           const matchedUser = userMap[emailKey];
 
+          // เช็กชื่อ: ถ้า name ใน quiz_results มีค่า และไม่เท่ากับ 'EMPTY' ให้ใช้ name นั้น ก่อนดึงจาก users
+          let finalName = 'ไม่ระบุชื่อ';
+          if (r.name && r.name !== 'EMPTY' && r.name.trim() !== '') {
+            finalName = r.name;
+          } else if (matchedUser && matchedUser.full_name) {
+            finalName = matchedUser.full_name;
+          } else if (emailKey) {
+            finalName = emailKey;
+          }
+
+          // เช็กประสบการณ์: ดึงจาก r.experience ก่อน ค่อยดึงจาก users
+          let finalExp = 'ไม่ระบุ';
+          if (r.experience !== null && r.experience !== undefined && r.experience !== '') {
+            finalExp = String(r.experience);
+          } else if (matchedUser && matchedUser.experience) {
+            finalExp = String(matchedUser.experience);
+          }
+
           return {
             ...r,
-            name: r.name || (matchedUser && matchedUser.full_name) || 'N/A',
-            experience: r.experience || (matchedUser && matchedUser.experience) || 'ไม่ระบุ'
+            name: finalName,
+            experience: finalExp
           };
         });
 
         const formattedQuiz = mapData(quizResults);
         const formattedSubjective = mapData(subjectiveAnswers);
 
+        // กรองข้อมูลตาม Search / Date
         globalQuizData = formattedQuiz.filter(r => {
           const matchName = r.name && r.name.toLowerCase().includes(keyword);
           const matchEmail = (r.user_email || r.email) && (r.user_email || r.email).toLowerCase().includes(keyword);
@@ -79,6 +108,7 @@
           return (!keyword || matchName || matchEmail || matchExp) && matchDate;
         });
 
+        // สั่ง Render ข้อมูลออกหน้าจอ
         renderSummaryStats(globalQuizData);
         renderTables(globalQuizData, globalSubjectiveData);
         renderOverallAnalysis(globalQuizData, globalSubjectiveData);
@@ -112,6 +142,7 @@
       quizTable.innerHTML = "";
       subjectiveTable.innerHTML = "";
 
+      // 📌 1. แสดงผลตารางปรนัย (quiz_results)
       if (quizData.length === 0) {
         quizTable.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#888;">ไม่พบข้อมูล</td></tr>`;
       } else {
@@ -121,7 +152,7 @@
             <td>${i + 1}</td>
             <td><strong>${r.name}</strong></td>
             <td><span class="badge-exp">${r.experience}</span></td>
-            <td><span class="badge-score">${r.score}</span></td>
+            <td><span class="badge-score">${r.score ?? '-'}</span></td>
             <td>${r.total_questions || '-'}</td>
             <td>${r.created_at ? new Date(r.created_at).toLocaleString('th-TH') : '-'}</td>
             <td><button class="btn-action" onclick="openIndividualModal('${r.user_email || r.email || r.name}')">🔍 วิเคราะห์รายบุคคล</button></td>
@@ -130,6 +161,7 @@
         });
       }
 
+      // 📌 2. แสดงผลตารางอัตนัย (subjective_answers)
       if (subjectiveData.length === 0) {
         subjectiveTable.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#888;">ไม่พบข้อมูล</td></tr>`;
       } else {
@@ -197,7 +229,7 @@
       let weaknesses = [];
 
       if (quizData.length > 0) {
-        const scores = quizData.map(r => (r.score / (r.total_questions || 1)) * 100);
+        const scores = quizData.map(r => ((r.score || 0) / (r.total_questions || 1)) * 100);
         const avgPercentage = scores.reduce((a, b) => a + b, 0) / scores.length;
 
         if (avgPercentage >= 75) {
@@ -221,7 +253,7 @@
       `;
     }
 
-    // 🔥 วิเคราะห์รายบุคคล นำประสบการณ์มาประมวลผล
+    // 📌 เปิด Modal วิเคราะห์รายบุคคล
     window.openIndividualModal = function(identifier) {
       const userQuiz = globalQuizData.find(r => (r.user_email === identifier || r.email === identifier || r.name === identifier));
       const userSubjective = globalSubjectiveData.find(r => (r.user_email === identifier || r.email === identifier || r.name === identifier));
@@ -241,10 +273,10 @@
       let pWeaknesses = [];
       let pRecommendations = [];
 
-      // 1. วิเคราะห์ตามประสบการณ์การทำงาน
+      // วิเคราะห์ตามประสบการณ์
       if (experience.includes("น้อยกว่า 1 ปี")) {
-        pWeaknesses.push("กลุ่ม New Joiner (ประสบการณ์น้อยกว่า 1 ปี): มีแนวโน้มเสียอาการหรือตื่นตระหนกเมื่อเจอข้อโต้แย้งนอกเหนือสคริปต์");
-        pRecommendations.push("เน้นการฝึกอุปสรรคพื้นฐาน และให้ฟังไฟล์เสียงการขายจาก Agent รุ่นพี่ (Call Shadows)");
+        pWeaknesses.push("กลุ่ม New Joiner (ประสบการณ์น้อยกว่า 1 ปี): มีแนวโน้มตื่นตระหนกเมื่อเจอข้อโต้แย้งนอกเหนือสคริปต์");
+        pRecommendations.push("เน้นการฝึกอุปสรรคพื้นฐาน และฟังไฟล์เสียงจาก Agent รุ่นพี่ (Call Shadows)");
       } else if (experience.includes("1 - 3 ปี")) {
         pStrengths.push("กลุ่มเริ่มมีประสบการณ์ (1-3 ปี): เข้าใจขั้นตอนการเสนอขายและตอบคำถามเบื้องต้นได้ดี");
         pRecommendations.push("ยกระดับทักษะการค้นหาความต้องการเชิงลึก (Probing Skill) เพื่อเพิ่มโอกาสการปิดการขาย");
@@ -255,15 +287,14 @@
         pWeaknesses.push("ไม่พบข้อมูลประสบการณ์ทำงาน ทำให้ไม่สามารถประเมินกรอบทักษะตามอายุงานได้");
       }
 
-      // 2. วิเคราะห์จากคะแนนปรนัย
       if (userQuiz) {
         if (percent >= 80) {
-          pStrengths.push(`มีความรู้ความเข้าใจในผลิตภัณฑ์/เงื่อนไขประกันในระดับดีเยี่ยม (${score}/${total} คะแนน)`);
+          pStrengths.push(`มีความรู้ความเข้าใจในผลิตภัณฑ์ประกันในระดับดีเยี่ยม (${score}/${total} คะแนน)`);
         } else if (percent >= 50) {
           pStrengths.push(`มีความรู้พื้นฐานเกี่ยวกับผลิตภัณฑ์อยู่ในเกณฑ์ผ่าน (${percent}%)`);
-          pWeaknesses.push(`ยังมีข้อผิดพลาดในข้อสอบปรนัยบางส่วน คิดเป็น ${100 - percent}% ของเนื้อหาทั้งหมด`);
+          pWeaknesses.push(`ยังมีข้อผิดพลาดในข้อสอบปรนัยบางส่วน คิดเป็น ${100 - percent}% ของเนื้อหา`);
         } else {
-          pWeaknesses.push(`คะแนนความรู้ปรนัยต่ำกว่าเกณฑ์มาตรฐาน (${percent}%) อาจยังไม่แม่นยำในเงื่อนไขกรมธรรม์`);
+          pWeaknesses.push(`คะแนนความรู้ปรนัยต่ำกว่าเกณฑ์มาตรฐาน (${percent}%)`);
         }
       }
 
@@ -290,7 +321,7 @@
               <ul>${pStrengths.map(s => `<li>${s}</li>`).join('')}</ul>
             </div>
             <div class="swot-card weakness">
-              <h4>⚠️ จุดที่ควรปรับปรุง/วิเคราะห์ความเสี่ยง (Weaknesses)</h4>
+              <h4>⚠️ จุดที่ควรปรับปรุง (Weaknesses)</h4>
               <ul>${pWeaknesses.map(w => `<li>${w}</li>`).join('')}</ul>
             </div>
           </div>
@@ -300,7 +331,7 @@
             <ul>${pRecommendations.map(r => `<li>${r}</li>`).join('')}</ul>
           </div>
 
-          <h3 style="color:#2c3e50; font-size:16px; margin-top:25px;">📝 รายละเอียดคำถาม & คำตอบข้อสอบอัตนัย</h3>
+          <h3 style="color:#2c3e50; font-size:16px; margin-top:25px;">📝 รายรายละเอียดคำตอบข้อสอบอัตนัย</h3>
           <div>${subjectiveDetails}</div>
         </div>
       `;
@@ -345,8 +376,8 @@
 
     function renderChart(data) {
       const ctx = document.getElementById("scoreChart").getContext("2d");
-      const labels = data.map(r => r.name || r.user_email || 'N/A');
-      const scores = data.map(r => r.score);
+      const labels = data.map(r => r.name || 'N/A');
+      const scores = data.map(r => r.score || 0);
       
       if (window.scoreChartInstance) window.scoreChartInstance.destroy();
       
