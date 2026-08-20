@@ -18,7 +18,6 @@
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno'
     );
 
-    // 📌 ข้อความคำถามอัตนัยทั้ง 10 ข้อ
     const QUESTIONS_LIST = [
       "คำถามอัตนัยข้อที่ 1 (ไม่สนใจประกันครับ/ค่ะ)",
       "คำถามอัตนัยข้อที่ 2 (มีประกันอยู่แล้วหลายตัว?)",
@@ -40,33 +39,30 @@
       const date = document.getElementById("dateInput").value.trim();
 
       try {
-        // 1. ดึงข้อมูลจาก 3 ตารางหลักแยกกัน เพื่อเลี่ยงปัญหา Foreign Key ไม่ผูก
         const { data: users } = await supabase.from("users").select("*");
         const { data: quizResults } = await supabase.from("quiz_results").select("*");
         const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*");
 
-        // สร้าง Map ของ Users โดยใช้อีเมลเป็น Key
         const userMap = {};
         (users || []).forEach(u => {
           if (u.email) userMap[u.email.toLowerCase().trim()] = u;
         });
 
-        // 2. Format ข้อมูล และดึงชื่อ/ประสบการณ์จาก users มารวม
+        // 🔥 ดึงประสบการณ์จาก r.experience ( quiz_results ) เป็นลำดับแรก
         const mapData = (list) => (list || []).map(r => {
           const emailKey = (r.user_email || r.email || '').toLowerCase().trim();
           const matchedUser = userMap[emailKey];
 
           return {
             ...r,
-            name: (matchedUser && matchedUser.full_name) || r.name || r.full_name || 'N/A',
-            experience: (matchedUser && matchedUser.experience) || r.experience || 'ไม่ระบุ'
+            name: r.name || (matchedUser && matchedUser.full_name) || 'N/A',
+            experience: r.experience || (matchedUser && matchedUser.experience) || 'ไม่ระบุ'
           };
         });
 
         const formattedQuiz = mapData(quizResults);
         const formattedSubjective = mapData(subjectiveAnswers);
 
-        // 3. Filter ข้อมูลตาม คีย์เวิร์ด และ วันที่
         globalQuizData = formattedQuiz.filter(r => {
           const matchName = r.name && r.name.toLowerCase().includes(keyword);
           const matchEmail = (r.user_email || r.email) && (r.user_email || r.email).toLowerCase().includes(keyword);
@@ -116,7 +112,6 @@
       quizTable.innerHTML = "";
       subjectiveTable.innerHTML = "";
 
-      // 1. ตารางปรนัย
       if (quizData.length === 0) {
         quizTable.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#888;">ไม่พบข้อมูล</td></tr>`;
       } else {
@@ -135,7 +130,6 @@
         });
       }
 
-      // 2. ตารางอัตนัย
       if (subjectiveData.length === 0) {
         subjectiveTable.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#888;">ไม่พบข้อมูล</td></tr>`;
       } else {
@@ -158,7 +152,6 @@
 
     function formatAnswersHTML(answers) {
       if (!answers) return "<span style='color:#888;'>ไม่มีข้อมูลคำตอบ</span>";
-
       let entries = [];
 
       if (Array.isArray(answers)) {
@@ -184,7 +177,6 @@
 
       return entries.map((item, idx) => {
         const fullQuestion = QUESTIONS_LIST[idx] || `คำถามข้อที่ ${idx + 1} (${item.key})`;
-
         return `
           <div class="qa-item">
             <div class="qa-question"><strong>ข้อที่ ${idx + 1}: ${fullQuestion}</strong></div>
@@ -229,7 +221,7 @@
       `;
     }
 
-    // 🔥 วิเคราะห์รายบุคคล นำ "ประสบการณ์" มาวิเคราะห์ร่วมด้วย
+    // 🔥 วิเคราะห์รายบุคคล นำประสบการณ์มาประมวลผล
     window.openIndividualModal = function(identifier) {
       const userQuiz = globalQuizData.find(r => (r.user_email === identifier || r.email === identifier || r.name === identifier));
       const userSubjective = globalSubjectiveData.find(r => (r.user_email === identifier || r.email === identifier || r.name === identifier));
@@ -249,7 +241,7 @@
       let pWeaknesses = [];
       let pRecommendations = [];
 
-      // 1. วิเคราะห์วิพากษ์ตามประสบการณ์การทำงาน
+      // 1. วิเคราะห์ตามประสบการณ์การทำงาน
       if (experience.includes("น้อยกว่า 1 ปี")) {
         pWeaknesses.push("กลุ่ม New Joiner (ประสบการณ์น้อยกว่า 1 ปี): มีแนวโน้มเสียอาการหรือตื่นตระหนกเมื่อเจอข้อโต้แย้งนอกเหนือสคริปต์");
         pRecommendations.push("เน้นการฝึกอุปสรรคพื้นฐาน และให้ฟังไฟล์เสียงการขายจาก Agent รุ่นพี่ (Call Shadows)");
@@ -259,6 +251,8 @@
       } else if (experience.includes("3 - 5 ปี") || experience.includes("มากกว่า 5 ปี")) {
         pStrengths.push("กลุ่ม Agent ประสบการณ์สูง: แม่นยำในผลิตภัณฑ์และรับมือข้อโต้แย้งได้เป็นธรรมชาติ");
         pRecommendations.push("มุ่งเน้นปรับปรุงน้ำเสียงสร้างความคุ้นเคย (Rapport) และเทคนิค Closing ขั้นสูง");
+      } else {
+        pWeaknesses.push("ไม่พบข้อมูลประสบการณ์ทำงาน ทำให้ไม่สามารถประเมินกรอบทักษะตามอายุงานได้");
       }
 
       // 2. วิเคราะห์จากคะแนนปรนัย
@@ -271,44 +265,6 @@
         } else {
           pWeaknesses.push(`คะแนนความรู้ปรนัยต่ำกว่าเกณฑ์มาตรฐาน (${percent}%) อาจยังไม่แม่นยำในเงื่อนไขกรมธรรม์`);
         }
-      }
-
-      // 3. วิเคราะห์คำตอบอัตนัยรายบุคคล (Keyword Analysis)
-      if (userSubjective && userSubjective.answers) {
-        let rawText = "";
-        if (Array.isArray(userSubjective.answers)) {
-          rawText = userSubjective.answers.map(a => typeof a === 'object' ? (a.answer || a.a || JSON.stringify(a)) : a).join(" ");
-        } else if (typeof userSubjective.answers === 'object') {
-          rawText = Object.values(userSubjective.answers).join(" ");
-        } else {
-          rawText = String(userSubjective.answers);
-        }
-
-        const lowerText = rawText.toLowerCase();
-
-        if (rawText.length < 50) {
-          pWeaknesses.push("การตอบคำถามอัตนัยสั้นเกินไป ละเลยการอธิบายรายละเอียดเพื่อสร้างความน่าเชื่อถือให้ลูกค้า");
-          pRecommendations.push("ฝึกฝนการตอบข้อโต้แย้งโดยใช้โครงสร้าง FAB (Feature-Advantage-Benefit) เพื่อให้คำตอบมีน้ำหนักขึ้น");
-        } else {
-          pStrengths.push("มีความพยายามในการอธิบายรายละเอียดข้อตอบโต้แย้งได้อย่างครอบคลุม");
-        }
-
-        if (lowerText.includes("แพง") || lowerText.includes("เงิน") || lowerText.includes("ลด")) {
-          pWeaknesses.push("จุดอ่อนการรับมือข้อโต้แย้งเรื่อง 'เบี้ยประกันแพง': มุ่งเน้นการอธิบายราคามากกว่าการชี้ให้เห็น 'มูลค่าและสิทธิประโยชน์'");
-          pRecommendations.push("ทบทวนเทคนิคการซอยเฉลี่ยเบี้ยประกันเป็นรายวัน (Cost Break Down) เพื่อให้ลูกค้ารู้สึกคุ้มค่า");
-        }
-
-        if (lowerText.includes("ส่งเอกสาร") || lowerText.includes("ส่งไลน์") || lowerText.includes("ส่งไลน์ไว้ก่อน")) {
-          pWeaknesses.push("จุดอ่อนการปิดการขายทันที: มีแนวโน้มยอมตามลูกค้าเมื่อขอเอกสาร ทำให้เสียโอกาสสรุปจบในสาย");
-          pRecommendations.push("เพิ่มทักษะการสรุปประเด็นสำคัญในสายก่อนส่งเอกสาร เพื่อกระตุ้นการตัดสินใจ (Closing Skill)");
-        }
-
-        if (lowerText.includes("ปรึกษา") || lowerText.includes("ถามแฟน") || lowerText.includes("ถามแม่")) {
-          pWeaknesses.push("การจัดการเมื่อลูกค้าขอปรึกษาผู้อื่น: ยังขาดการถามคำถามเพื่อเจาะลึกข้อกังวลที่แท้จริงของลูกค้า");
-          pRecommendations.push("ฝึกใช้คำถามปลายเปิดเพื่อดึงข้อกังวลที่แท้จริง (Isolate Objection) ก่อนที่ลูกค้าจะวางสาย");
-        }
-      } else {
-        pWeaknesses.push("ไม่มีข้อมูลคำตอบอัตนัยสำหรับการวิเคราะห์เชิงลึก");
       }
 
       let subjectiveDetails = userSubjective ? formatAnswersHTML(userSubjective.answers) : "-";
@@ -371,12 +327,7 @@
         margin:       [0.3, 0.3, 0.3, 0.3],
         filename:     `รายงานผลสอบ_${candidateName}.pdf`,
         image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { 
-          scale: 2, 
-          useCORS: true, 
-          scrollY: 0,
-          logging: false 
-        },
+        html2canvas:  { scale: 2, useCORS: true, scrollY: 0, logging: false },
         jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
       };
 
@@ -450,98 +401,27 @@
   </script>
 
   <style>
-    body {
-      font-family: 'Sarabun', sans-serif;
-      background: #f4f7f9;
-      color: #333;
-      margin: 0;
-      padding: 30px 15px;
-    }
-
-    #dashboard {
-      max-width: 1100px;
-      margin: 0 auto;
-      background: #ffffff;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-    }
-
+    body { font-family: 'Sarabun', sans-serif; background: #f4f7f9; color: #333; margin: 0; padding: 30px 15px; }
+    #dashboard { max-width: 1100px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
     h2 { text-align: center; color: #007acc; font-weight: 700; margin-top: 0; margin-bottom: 25px; }
-
-    h3 {
-      color: #2c3e50;
-      font-size: 1.15rem;
-      margin-top: 30px;
-      margin-bottom: 15px;
-      border-left: 4px solid #007acc;
-      padding-left: 10px;
-    }
-
-    .kpi-container {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 15px;
-      margin-bottom: 25px;
-    }
-
-    .kpi-card {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      padding: 15px;
-      border-radius: 8px;
-      text-align: center;
-    }
-
+    h3 { color: #2c3e50; font-size: 1.15rem; margin-top: 30px; margin-bottom: 15px; border-left: 4px solid #007acc; padding-left: 10px; }
+    .kpi-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
+    .kpi-card { background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; text-align: center; }
     .kpi-card .number { font-size: 1.8rem; font-weight: 700; color: #007acc; }
     .kpi-card .label { font-size: 0.85rem; color: #64748b; }
-
-    .search-box {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 20px;
-      justify-content: center;
-      flex-wrap: wrap;
-      background: #f8fafc;
-      padding: 15px;
-      border-radius: 8px;
-      border: 1px solid #e2e8f0;
-    }
-
-    input, button {
-      padding: 10px 16px;
-      font-size: 0.95rem;
-      font-family: 'Sarabun', sans-serif;
-      border-radius: 6px;
-      border: 1px solid #cbd5e1;
-      outline: none;
-    }
-
+    .search-box { display: flex; gap: 12px; margin-bottom: 20px; justify-content: center; flex-wrap: wrap; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+    input, button { padding: 10px 16px; font-size: 0.95rem; font-family: 'Sarabun', sans-serif; border-radius: 6px; border: 1px solid #cbd5e1; outline: none; }
     input:focus { border-color: #007acc; box-shadow: 0 0 0 3px rgba(0, 122, 204, 0.15); }
-
     button { background: #007acc; color: white; border: none; font-weight: 600; cursor: pointer; }
     button:hover { background: #005999; }
-
     .btn-group { display: flex; gap: 10px; justify-content: flex-end; margin-bottom: 20px; }
     .btn-secondary { background: #22c55e; } .btn-secondary:hover { background: #16a34a; }
     .btn-danger { background: #ef4444; } .btn-danger:hover { background: #dc2626; }
-
-    .btn-action {
-      background: #0284c7;
-      color: white;
-      border: none;
-      padding: 6px 12px;
-      font-size: 0.85rem;
-      border-radius: 4px;
-      cursor: pointer;
-    }
+    .btn-action { background: #0284c7; color: white; border: none; padding: 6px 12px; font-size: 0.85rem; border-radius: 4px; cursor: pointer; }
     .btn-action:hover { background: #0369a1; }
-
     .chart-container { background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 25px; }
-
     .swot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
     @media (max-width: 600px) { .swot-grid { grid-template-columns: 1fr; } }
-
     .swot-card { padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
     .swot-card.strength { background-color: #f0fdf4; border-color: #bbf7d0; }
     .swot-card.strength h4 { color: #166534; margin-top: 0; }
@@ -550,60 +430,22 @@
     .swot-card.recommendation { background-color: #eff6ff; border-color: #bfdbfe; }
     .swot-card.recommendation h4 { color: #1e40af; margin-top: 0; }
     .swot-card ul { margin: 0; padding-left: 20px; font-size: 0.9rem; line-height: 1.5; }
-
     table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 25px; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; }
     th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 0.95rem; vertical-align: top; }
     th { background: #007acc; color: white; font-weight: 600; }
     tr:last-child td { border-bottom: none; }
     tr:hover td { background-color: #f8fafc; }
-
     .badge-score { background-color: #e0f2fe; color: #0369a1; font-weight: bold; padding: 3px 8px; border-radius: 12px; }
     .badge-exp { background-color: #f1f5f9; color: #475569; font-weight: 600; padding: 3px 8px; border-radius: 6px; border: 1px solid #cbd5e1; display: inline-block; }
-
     .qa-item { background: #f8fafc; border-left: 3px solid #007acc; padding: 8px 12px; margin-bottom: 8px; border-radius: 0 6px 6px 0; font-size: 0.9rem; }
     .qa-item:last-child { margin-bottom: 0; }
     .qa-question { color: #0f172a; margin-bottom: 4px; }
     .qa-answer { color: #334155; }
-
-    .modal {
-      display: none;
-      position: fixed;
-      z-index: 1000;
-      left: 0;
-      top: 0;
-      width: 100%;
-      height: 100%;
-      background-color: rgba(0,0,0,0.5);
-      overflow-y: auto;
-    }
-
-    .modal-content {
-      background-color: #fff;
-      margin: 40px auto;
-      padding: 30px;
-      border-radius: 12px;
-      max-width: 800px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-      position: relative;
-    }
-
-    .close-btn {
-      position: absolute;
-      right: 20px;
-      top: 15px;
-      font-size: 28px;
-      font-weight: bold;
-      color: #aaa;
-      cursor: pointer;
-    }
+    .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); overflow-y: auto; }
+    .modal-content { background-color: #fff; margin: 40px auto; padding: 30px; border-radius: 12px; max-width: 800px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); position: relative; }
+    .close-btn { position: absolute; right: 20px; top: 15px; font-size: 28px; font-weight: bold; color: #aaa; cursor: pointer; }
     .close-btn:hover { color: #333; }
-
-    .modal-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-      margin-bottom: 15px;
-    }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 15px; }
   </style>
 </head>
 <body>
@@ -611,7 +453,7 @@
     <h2>แดชบอร์ดผลการสอบและการวิเคราะห์</h2>
     
     <div class="search-box">
-      <input type="text" id="searchInput" placeholder="ค้นหาด้วยชื่อ ประสบการณ์ หรือ อีเมลพนักงาน">
+      <input type="text" id="searchInput" placeholder="ค้นหาด้วยชื่อ ประสบการณ์ หรือ อีเมล">
       <input type="date" id="dateInput">
       <button id="searchBtn">ค้นหา</button>
     </div>
@@ -660,7 +502,6 @@
     </table>
   </div>
 
-  <!-- Modal สำหรับแสดงผลการวิเคราะห์รายบุคคล -->
   <div id="individualModal" class="modal">
     <div class="modal-content">
       <span class="close-btn" onclick="closeModal()">&times;</span>
