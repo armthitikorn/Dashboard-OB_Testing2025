@@ -42,19 +42,21 @@
       const { data: quizResults } = await supabase.from("quiz_results").select("*");
       const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*");
 
-      // ✅ ค้นหาได้ทั้ง 'ชื่อ (name)' และ 'อีเมล (user_email)'
+      // ✅ ค้นหาได้ทั้ง 'ชื่อ (name)', 'อีเมล (user_email)' หรือ 'ประสบการณ์ (experience)'
       globalQuizData = (quizResults || []).filter(r => {
         const matchName = r.name && r.name.toLowerCase().includes(keyword);
         const matchEmail = r.user_email && r.user_email.toLowerCase().includes(keyword);
+        const matchExp = r.experience && String(r.experience).toLowerCase().includes(keyword);
         const matchDate = !date || (r.created_at && r.created_at.startsWith(date));
-        return (!keyword || matchName || matchEmail) && matchDate;
+        return (!keyword || matchName || matchEmail || matchExp) && matchDate;
       });
       
       globalSubjectiveData = (subjectiveAnswers || []).filter(r => {
         const matchName = r.name && r.name.toLowerCase().includes(keyword);
         const matchEmail = r.user_email && r.user_email.toLowerCase().includes(keyword);
+        const matchExp = r.experience && String(r.experience).toLowerCase().includes(keyword);
         const matchDate = !date || (r.created_at && r.created_at.startsWith(date));
-        return (!keyword || matchName || matchEmail) && matchDate;
+        return (!keyword || matchName || matchEmail || matchExp) && matchDate;
       });
 
       renderSummaryStats(globalQuizData);
@@ -95,7 +97,7 @@
           row.innerHTML = `
             <td>${i + 1}</td>
             <td><strong>${r.name || 'N/A'}</strong></td>
-            <td>${r.user_email || '-'}</td>
+            <td>${r.experience || '-'}</td>
             <td><span class="badge-score">${r.score}</span></td>
             <td>${r.total_questions || '-'}</td>
             <td>${r.created_at ? new Date(r.created_at).toLocaleString('th-TH') : '-'}</td>
@@ -116,7 +118,7 @@
           row.innerHTML = `
             <td>${i + 1}</td>
             <td><strong>${r.name || 'N/A'}</strong></td>
-            <td>${r.user_email || '-'}</td>
+            <td>${r.experience || '-'}</td>
             <td>${formattedAnswers}</td>
             <td>${r.created_at ? new Date(r.created_at).toLocaleString('th-TH') : '-'}</td>
             <td><button class="btn-action" onclick="openIndividualModal('${r.name || r.user_email}')">🔍 วิเคราะห์รายบุคคล</button></td>
@@ -210,7 +212,7 @@
       }
 
       const name = (userQuiz && userQuiz.name) || (userSubjective && userSubjective.name) || identifier;
-      const email = (userQuiz && userQuiz.user_email) || (userSubjective && userSubjective.user_email) || '-';
+      const experience = (userQuiz && userQuiz.experience) || (userSubjective && userSubjective.experience) || '-';
       const score = userQuiz ? userQuiz.score : '-';
       const total = userQuiz ? userQuiz.total_questions : '-';
       const percent = (userQuiz && userQuiz.total_questions) ? ((userQuiz.score / userQuiz.total_questions) * 100).toFixed(1) : 0;
@@ -289,7 +291,7 @@
 
         <div style="background:#f8fafc; padding:15px; border-radius:8px; margin-bottom:20px; border:1px solid #e2e8f0;">
           <p style="margin:4px 0;"><strong>ชื่อ-นามสกุล:</strong> ${name}</p>
-          <p style="margin:4px 0;"><strong>อีเมล:</strong> ${email}</p>
+          <p style="margin:4px 0;"><strong>ประสบการณ์:</strong> ${experience}</p>
           <p style="margin:4px 0;"><strong>คะแนนปรนัย:</strong> <span style="color:#007acc; font-weight:bold;">${score} / ${total} (${percent}%)</span></p>
         </div>
 
@@ -555,7 +557,7 @@
     <h2>แดชบอร์ดผลการสอบและการวิเคราะห์</h2>
     
     <div class="search-box">
-      <input type="text" id="searchInput" placeholder="ค้นหาด้วยชื่อ หรือ อีเมลพนักงาน">
+      <input type="text" id="searchInput" placeholder="ค้นหาด้วยชื่อ ประสบการณ์ หรือ อีเมลพนักงาน">
       <input type="date" id="dateInput">
       <button id="searchBtn">ค้นหา</button>
     </div>
@@ -590,7 +592,7 @@
     <h3>ตารางสรุปคะแนน (ข้อสอบปรนัย)</h3>
     <table id="quizTable">
       <thead>
-        <tr><th>#</th><th>ชื่อผู้ทำแบบทดสอบ</th><th>อีเมล</th><th>คะแนน</th><th>จำนวนข้อ</th><th>วันที่</th><th>วิเคราะห์</th></tr>
+        <tr><th>#</th><th>ชื่อผู้ทำแบบทดสอบ</th><th>ประสบการณ์</th><th>คะแนน</th><th>จำนวนข้อ</th><th>วันที่</th><th>วิเคราะห์</th></tr>
       </thead>
       <tbody id="quizTableBody"></tbody>
     </table>
@@ -598,7 +600,7 @@
     <h3>ตารางคำตอบแบบรายละเอียด (ข้อสอบอัตนัย)</h3>
     <table id="subjectiveTable">
       <thead>
-        <tr><th style="width: 5%;">#</th><th style="width: 18%;">ชื่อผู้ทำแบบทดสอบ</th><th style="width: 18%;">อีเมล</th><th style="width: 38%;">คำถาม & คำตอบ</th><th style="width: 11%;">วันที่</th><th style="width: 10%;">วิเคราะห์</th></tr>
+        <tr><th style="width: 5%;">#</th><th style="width: 18%;">ชื่อผู้ทำแบบทดสอบ</th><th style="width: 18%;">ประสบการณ์</th><th style="width: 38%;">คำถาม & คำตอบ</th><th style="width: 11%;">วันที่</th><th style="width: 10%;">วิเคราะห์</th></tr>
       </thead>
       <tbody id="subjectiveTableBody"></tbody>
     </table>
