@@ -39,30 +39,58 @@
       const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
       const date = document.getElementById("dateInput").value.trim();
 
-      const { data: quizResults } = await supabase.from("quiz_results").select("*");
-      const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*");
+      try {
+        // 1. ดึงข้อมูลจาก 3 ตารางหลักแยกกัน เพื่อเลี่ยงปัญหา Foreign Key ไม่ผูก
+        const { data: users } = await supabase.from("users").select("*");
+        const { data: quizResults } = await supabase.from("quiz_results").select("*");
+        const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*");
 
-      // ✅ ค้นหาได้ทั้ง 'ชื่อ (name)', 'อีเมล (user_email)' หรือ 'ประสบการณ์ (experience)'
-      globalQuizData = (quizResults || []).filter(r => {
-        const matchName = r.name && r.name.toLowerCase().includes(keyword);
-        const matchEmail = r.user_email && r.user_email.toLowerCase().includes(keyword);
-        const matchExp = r.experience && String(r.experience).toLowerCase().includes(keyword);
-        const matchDate = !date || (r.created_at && r.created_at.startsWith(date));
-        return (!keyword || matchName || matchEmail || matchExp) && matchDate;
-      });
-      
-      globalSubjectiveData = (subjectiveAnswers || []).filter(r => {
-        const matchName = r.name && r.name.toLowerCase().includes(keyword);
-        const matchEmail = r.user_email && r.user_email.toLowerCase().includes(keyword);
-        const matchExp = r.experience && String(r.experience).toLowerCase().includes(keyword);
-        const matchDate = !date || (r.created_at && r.created_at.startsWith(date));
-        return (!keyword || matchName || matchEmail || matchExp) && matchDate;
-      });
+        // สร้าง Map ของ Users โดยใช้อีเมลเป็น Key
+        const userMap = {};
+        (users || []).forEach(u => {
+          if (u.email) userMap[u.email.toLowerCase().trim()] = u;
+        });
 
-      renderSummaryStats(globalQuizData);
-      renderTables(globalQuizData, globalSubjectiveData);
-      renderOverallAnalysis(globalQuizData, globalSubjectiveData);
-      renderChart(globalQuizData);
+        // 2. Format ข้อมูล และดึงชื่อ/ประสบการณ์จาก users มารวม
+        const mapData = (list) => (list || []).map(r => {
+          const emailKey = (r.user_email || r.email || '').toLowerCase().trim();
+          const matchedUser = userMap[emailKey];
+
+          return {
+            ...r,
+            name: (matchedUser && matchedUser.full_name) || r.name || r.full_name || 'N/A',
+            experience: (matchedUser && matchedUser.experience) || r.experience || 'ไม่ระบุ'
+          };
+        });
+
+        const formattedQuiz = mapData(quizResults);
+        const formattedSubjective = mapData(subjectiveAnswers);
+
+        // 3. Filter ข้อมูลตาม คีย์เวิร์ด และ วันที่
+        globalQuizData = formattedQuiz.filter(r => {
+          const matchName = r.name && r.name.toLowerCase().includes(keyword);
+          const matchEmail = (r.user_email || r.email) && (r.user_email || r.email).toLowerCase().includes(keyword);
+          const matchExp = r.experience && r.experience.toLowerCase().includes(keyword);
+          const matchDate = !date || (r.created_at && r.created_at.startsWith(date));
+          return (!keyword || matchName || matchEmail || matchExp) && matchDate;
+        });
+        
+        globalSubjectiveData = formattedSubjective.filter(r => {
+          const matchName = r.name && r.name.toLowerCase().includes(keyword);
+          const matchEmail = (r.user_email || r.email) && (r.user_email || r.email).toLowerCase().includes(keyword);
+          const matchExp = r.experience && r.experience.toLowerCase().includes(keyword);
+          const matchDate = !date || (r.created_at && r.created_at.startsWith(date));
+          return (!keyword || matchName || matchEmail || matchExp) && matchDate;
+        });
+
+        renderSummaryStats(globalQuizData);
+        renderTables(globalQuizData, globalSubjectiveData);
+        renderOverallAnalysis(globalQuizData, globalSubjectiveData);
+        renderChart(globalQuizData);
+
+      } catch (err) {
+        console.error("Fetch Data Error:", err);
+      }
     }
 
     function renderSummaryStats(quizData) {
@@ -96,12 +124,12 @@
           const row = document.createElement("tr");
           row.innerHTML = `
             <td>${i + 1}</td>
-            <td><strong>${r.name || 'N/A'}</strong></td>
-            <td>${r.experience || '-'}</td>
+            <td><strong>${r.name}</strong></td>
+            <td><span class="badge-exp">${r.experience}</span></td>
             <td><span class="badge-score">${r.score}</span></td>
             <td>${r.total_questions || '-'}</td>
             <td>${r.created_at ? new Date(r.created_at).toLocaleString('th-TH') : '-'}</td>
-            <td><button class="btn-action" onclick="openIndividualModal('${r.name || r.user_email}')">🔍 วิเคราะห์รายบุคคล</button></td>
+            <td><button class="btn-action" onclick="openIndividualModal('${r.user_email || r.email || r.name}')">🔍 วิเคราะห์รายบุคคล</button></td>
           `;
           quizTable.appendChild(row);
         });
@@ -117,11 +145,11 @@
 
           row.innerHTML = `
             <td>${i + 1}</td>
-            <td><strong>${r.name || 'N/A'}</strong></td>
-            <td>${r.experience || '-'}</td>
+            <td><strong>${r.name}</strong></td>
+            <td><span class="badge-exp">${r.experience}</span></td>
             <td>${formattedAnswers}</td>
             <td>${r.created_at ? new Date(r.created_at).toLocaleString('th-TH') : '-'}</td>
-            <td><button class="btn-action" onclick="openIndividualModal('${r.name || r.user_email}')">🔍 วิเคราะห์รายบุคคล</button></td>
+            <td><button class="btn-action" onclick="openIndividualModal('${r.user_email || r.email || r.name}')">🔍 วิเคราะห์รายบุคคล</button></td>
           `;
           subjectiveTable.appendChild(row);
         });
@@ -201,18 +229,18 @@
       `;
     }
 
-    // 🔥 วิเคราะห์รายบุคคลด้วย Keyword + ปรนัย
+    // 🔥 วิเคราะห์รายบุคคล นำ "ประสบการณ์" มาวิเคราะห์ร่วมด้วย
     window.openIndividualModal = function(identifier) {
-      const userQuiz = globalQuizData.find(r => (r.name === identifier || r.user_email === identifier));
-      const userSubjective = globalSubjectiveData.find(r => (r.name === identifier || r.user_email === identifier));
+      const userQuiz = globalQuizData.find(r => (r.user_email === identifier || r.email === identifier || r.name === identifier));
+      const userSubjective = globalSubjectiveData.find(r => (r.user_email === identifier || r.email === identifier || r.name === identifier));
 
       if (!userQuiz && !userSubjective) {
         alert("ไม่พบข้อมูลของผู้สอบท่านนี้");
         return;
       }
 
-      const name = (userQuiz && userQuiz.name) || (userSubjective && userSubjective.name) || identifier;
-      const experience = (userQuiz && userQuiz.experience) || (userSubjective && userSubjective.experience) || '-';
+      const name = (userQuiz && userQuiz.name) || (userSubjective && userSubjective.name) || 'N/A';
+      const experience = (userQuiz && userQuiz.experience) || (userSubjective && userSubjective.experience) || 'ไม่ระบุ';
       const score = userQuiz ? userQuiz.score : '-';
       const total = userQuiz ? userQuiz.total_questions : '-';
       const percent = (userQuiz && userQuiz.total_questions) ? ((userQuiz.score / userQuiz.total_questions) * 100).toFixed(1) : 0;
@@ -221,7 +249,19 @@
       let pWeaknesses = [];
       let pRecommendations = [];
 
-      // 1. วิเคราะห์จากคะแนนปรนัย
+      // 1. วิเคราะห์วิพากษ์ตามประสบการณ์การทำงาน
+      if (experience.includes("น้อยกว่า 1 ปี")) {
+        pWeaknesses.push("กลุ่ม New Joiner (ประสบการณ์น้อยกว่า 1 ปี): มีแนวโน้มเสียอาการหรือตื่นตระหนกเมื่อเจอข้อโต้แย้งนอกเหนือสคริปต์");
+        pRecommendations.push("เน้นการฝึกอุปสรรคพื้นฐาน และให้ฟังไฟล์เสียงการขายจาก Agent รุ่นพี่ (Call Shadows)");
+      } else if (experience.includes("1 - 3 ปี")) {
+        pStrengths.push("กลุ่มเริ่มมีประสบการณ์ (1-3 ปี): เข้าใจขั้นตอนการเสนอขายและตอบคำถามเบื้องต้นได้ดี");
+        pRecommendations.push("ยกระดับทักษะการค้นหาความต้องการเชิงลึก (Probing Skill) เพื่อเพิ่มโอกาสการปิดการขาย");
+      } else if (experience.includes("3 - 5 ปี") || experience.includes("มากกว่า 5 ปี")) {
+        pStrengths.push("กลุ่ม Agent ประสบการณ์สูง: แม่นยำในผลิตภัณฑ์และรับมือข้อโต้แย้งได้เป็นธรรมชาติ");
+        pRecommendations.push("มุ่งเน้นปรับปรุงน้ำเสียงสร้างความคุ้นเคย (Rapport) และเทคนิค Closing ขั้นสูง");
+      }
+
+      // 2. วิเคราะห์จากคะแนนปรนัย
       if (userQuiz) {
         if (percent >= 80) {
           pStrengths.push(`มีความรู้ความเข้าใจในผลิตภัณฑ์/เงื่อนไขประกันในระดับดีเยี่ยม (${score}/${total} คะแนน)`);
@@ -233,10 +273,9 @@
         }
       }
 
-      // 2. วิเคราะห์คำตอบอัตนัยรายบุคคล (Keyword Analysis)
+      // 3. วิเคราะห์คำตอบอัตนัยรายบุคคล (Keyword Analysis)
       if (userSubjective && userSubjective.answers) {
         let rawText = "";
-        
         if (Array.isArray(userSubjective.answers)) {
           rawText = userSubjective.answers.map(a => typeof a === 'object' ? (a.answer || a.a || JSON.stringify(a)) : a).join(" ");
         } else if (typeof userSubjective.answers === 'object') {
@@ -272,55 +311,49 @@
         pWeaknesses.push("ไม่มีข้อมูลคำตอบอัตนัยสำหรับการวิเคราะห์เชิงลึก");
       }
 
-      if (pRecommendations.length === 0) {
-        pRecommendations.push("เข้าร่วม Role-play จำลองสถานการณ์ขายจริงเพื่อเพิ่มความคล่องแคล่วในการรับมือข้อโต้แย้ง");
-      }
-
-      if (pStrengths.length === 0) {
-        pStrengths.push("มีความตั้งใจในการทำแบบทดสอบจนเสร็จสิ้นกระบวนการ");
-      }
-
       let subjectiveDetails = userSubjective ? formatAnswersHTML(userSubjective.answers) : "-";
 
       const content = document.getElementById("modalReportContent");
       content.innerHTML = `
-        <div style="border-bottom: 2px solid #007acc; padding-bottom: 10px; margin-bottom: 20px;">
-          <h2 style="color:#007acc; margin:0;">รายงานสรุปผลการสอบและวิเคราะห์ทักษะรายบุคคล</h2>
-          <p style="margin:5px 0 0 0; color:#64748b;">ข้อมูล ณ วันที่: ${new Date().toLocaleDateString('th-TH')}</p>
-        </div>
-
-        <div style="background:#f8fafc; padding:15px; border-radius:8px; margin-bottom:20px; border:1px solid #e2e8f0;">
-          <p style="margin:4px 0;"><strong>ชื่อ-นามสกุล:</strong> ${name}</p>
-          <p style="margin:4px 0;"><strong>ประสบการณ์:</strong> ${experience}</p>
-          <p style="margin:4px 0;"><strong>คะแนนปรนัย:</strong> <span style="color:#007acc; font-weight:bold;">${score} / ${total} (${percent}%)</span></p>
-        </div>
-
-        <h3 style="color:#2c3e50;">📌 ผลการวิเคราะห์ทักษะรายบุคคล (Individual Analysis)</h3>
-        <div class="swot-grid">
-          <div class="swot-card strength">
-            <h4>💪 จุดแข็งที่พบ (Strengths)</h4>
-            <ul>${pStrengths.map(s => `<li>${s}</li>`).join('')}</ul>
+        <div style="background:#ffffff; padding:20px; color:#333333; font-family:'Sarabun', sans-serif;">
+          <div style="border-bottom: 2px solid #007acc; padding-bottom: 10px; margin-bottom: 20px;">
+            <h2 style="color:#007acc; margin:0; font-size:20px;">รายงานสรุปผลการสอบและวิเคราะห์ทักษะรายบุคคล</h2>
+            <p style="margin:5px 0 0 0; color:#64748b; font-size:14px;">ข้อมูล ณ วันที่: ${new Date().toLocaleDateString('th-TH')}</p>
           </div>
-          <div class="swot-card weakness">
-            <h4>⚠️ จุดที่ควรปรับปรุง/วิเคราะห์ความเสี่ยง (Weaknesses)</h4>
-            <ul>${pWeaknesses.map(w => `<li>${w}</li>`).join('')}</ul>
+
+          <div style="background:#f8fafc; padding:15px; border-radius:8px; margin-bottom:20px; border:1px solid #e2e8f0;">
+            <p style="margin:4px 0;"><strong>ชื่อ-นามสกุล:</strong> ${name}</p>
+            <p style="margin:4px 0;"><strong>ประสบการณ์ทำงาน:</strong> <span class="badge-exp">${experience}</span></p>
+            <p style="margin:4px 0;"><strong>คะแนนปรนัย:</strong> <span style="color:#007acc; font-weight:bold;">${score} / ${total} (${percent}%)</span></p>
           </div>
-        </div>
 
-        <div class="swot-card recommendation" style="margin-top:15px;">
-          <h4>💡 แนวทางการพัฒนาเฉพาะบุคคล (Action Plan)</h4>
-          <ul>${pRecommendations.map(r => `<li>${r}</li>`).join('')}</ul>
-        </div>
+          <h3 style="color:#2c3e50; font-size:16px; margin-top:20px;">📌 ผลการวิเคราะห์ทักษะรายบุคคล (Individual Analysis)</h3>
+          <div class="swot-grid">
+            <div class="swot-card strength">
+              <h4>💪 จุดแข็งที่พบ (Strengths)</h4>
+              <ul>${pStrengths.map(s => `<li>${s}</li>`).join('')}</ul>
+            </div>
+            <div class="swot-card weakness">
+              <h4>⚠️ จุดที่ควรปรับปรุง/วิเคราะห์ความเสี่ยง (Weaknesses)</h4>
+              <ul>${pWeaknesses.map(w => `<li>${w}</li>`).join('')}</ul>
+            </div>
+          </div>
 
-        <h3 style="color:#2c3e50; margin-top:25px;">📝 รายละเอียดคำถาม & คำตอบข้อสอบอัตนัย</h3>
-        <div>${subjectiveDetails}</div>
+          <div class="swot-card recommendation" style="margin-top:15px;">
+            <h4>💡 แนวทางการพัฒนาเฉพาะบุคคล (Action Plan)</h4>
+            <ul>${pRecommendations.map(r => `<li>${r}</li>`).join('')}</ul>
+          </div>
+
+          <h3 style="color:#2c3e50; font-size:16px; margin-top:25px;">📝 รายละเอียดคำถาม & คำตอบข้อสอบอัตนัย</h3>
+          <div>${subjectiveDetails}</div>
+        </div>
       `;
+
+      document.getElementById("individualModal").style.display = "block";
 
       document.getElementById("downloadIndividualPDFBtn").onclick = function() {
         downloadIndividualPDF(name);
       };
-
-      document.getElementById("individualModal").style.display = "block";
     };
 
     window.closeModal = function() {
@@ -329,14 +362,34 @@
 
     function downloadIndividualPDF(candidateName) {
       const element = document.getElementById("modalReportContent");
+      const btn = document.getElementById("downloadIndividualPDFBtn");
+      
+      btn.disabled = true;
+      btn.innerText = "⏳ กำลังสร้าง PDF...";
+
       const opt = {
-        margin:       0.4,
+        margin:       [0.3, 0.3, 0.3, 0.3],
         filename:     `รายงานผลสอบ_${candidateName}.pdf`,
         image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2 },
+        html2canvas:  { 
+          scale: 2, 
+          useCORS: true, 
+          scrollY: 0,
+          logging: false 
+        },
         jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
       };
-      html2pdf().set(opt).from(element).save();
+
+      setTimeout(() => {
+        html2pdf().set(opt).from(element).save().then(() => {
+          btn.disabled = false;
+          btn.innerText = "📄 ดาวน์โหลด PDF รายบุคคล";
+        }).catch(err => {
+          console.error("PDF Export Error:", err);
+          btn.disabled = false;
+          btn.innerText = "📄 ดาวน์โหลด PDF รายบุคคล";
+        });
+      }, 300);
     }
 
     function renderChart(data) {
@@ -382,7 +435,7 @@
         margin:       0.3,
         filename:     'แดชบอร์ดผลการสอบภาพรวม.pdf',
         image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2 },
+        html2canvas:  { scale: 2, useCORS: true },
         jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
       };
       html2pdf().set(opt).from(element).save();
@@ -505,6 +558,7 @@
     tr:hover td { background-color: #f8fafc; }
 
     .badge-score { background-color: #e0f2fe; color: #0369a1; font-weight: bold; padding: 3px 8px; border-radius: 12px; }
+    .badge-exp { background-color: #f1f5f9; color: #475569; font-weight: 600; padding: 3px 8px; border-radius: 6px; border: 1px solid #cbd5e1; display: inline-block; }
 
     .qa-item { background: #f8fafc; border-left: 3px solid #007acc; padding: 8px 12px; margin-bottom: 8px; border-radius: 0 6px 6px 0; font-size: 0.9rem; }
     .qa-item:last-child { margin-bottom: 0; }
