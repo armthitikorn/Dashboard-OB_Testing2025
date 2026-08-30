@@ -22,6 +22,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const candidateData = req.body?.candidateData || req.body;
+    
     const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${apiKey}`;
 
     const prompt = `คุณคือ Trainer ผู้เชี่ยวชาญด้านการขายประกัน Telesales 
