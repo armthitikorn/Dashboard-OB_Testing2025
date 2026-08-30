@@ -8,18 +8,13 @@ export default async function handler(req, res) {
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      console.error("GEMINI_API_KEY is missing in environment variables.");
-      return res.status(500).json({ error: 'GEMINI_API_KEY is not set in Vercel Environment Variables' });
-    }
-
-    if (!candidateData) {
-      return res.status(400).json({ error: 'Missing candidateData in request body' });
+      return res.status(500).json({ error: 'GEMINI_API_KEY is missing in Vercel environment variables' });
     }
 
     const prompt = `คุณคือ Trainer ผู้เชี่ยวชาญด้านการขายประกัน Telesales 
-กรุณาวิเคราะห์ผลการทดสอบของพนักงานชื่อ ${candidateData.name} (ประสบการณ์: ${candidateData.experience}) 
-ข้อมูลผลสอบปรนัย: ${JSON.stringify(candidateData.quizScores)}
-ข้อมูลข้อสอบอัตนัย: ${JSON.stringify(candidateData.subjectiveTests)}
+กรุณาวิเคราะห์ผลการทดสอบของพนักงานชื่อ ${candidateData?.name || 'พนักงาน'} (ประสบการณ์: ${candidateData?.experience || 'ไม่ระบุ'}) 
+ข้อมูลผลสอบปรนัย: ${JSON.stringify(candidateData?.quizScores || {})}
+ข้อมูลข้อสอบอัตนัย: ${JSON.stringify(candidateData?.subjectiveTests || [])}
 
 โปรดวิเคราะห์และตอบกลับเป็น JSON Structure เท่านั้น ตามรูปแบบนี้:
 {
@@ -41,17 +36,23 @@ export default async function handler(req, res) {
 
     const data = await response.json();
     
-    if (!response.ok || !data.candidates || data.candidates.length === 0) {
-      console.error("Gemini API Error Response:", data);
-      return res.status(500).json({ error: data.error?.message || 'Gemini API failed to return data' });
+    if (!response.ok) {
+      console.error("Google Gemini API Error:", data);
+      return res.status(500).json({ error: data.error?.message || 'Gemini API failed' });
     }
 
-    const resultText = data.candidates[0].content.parts[0].text;
-    const parsedResult = JSON.parse(resultText);
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) {
+      return res.status(500).json({ error: 'No text returned from Gemini' });
+    }
+
+    // กำจัดเครื่องหมาย Markdown ออกเพื่อป้องกัน JSON.parse พัง
+    const cleanJsonText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsedResult = JSON.parse(cleanJsonText);
 
     return res.status(200).json(parsedResult);
   } catch (err) {
-    console.error("Serverless AI Error Exception:", err);
+    console.error("Serverless AI Error Exception:", err.message);
     return res.status(500).json({ error: err.message });
   }
 }
