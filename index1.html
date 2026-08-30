@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>แดชบอร์ดสรุปผลการประเมินรอบด้าน (11 ชุด + อัตนัย)</title>
+  <title>แดชบอร์ดสรุปผลการประเมินรอบด้าน (Matrix 11 ชุด + อัตนัย & AI)</title>
   
   <!-- Fonts & Libraries -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,6 +21,21 @@
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno';
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // รายชื่อ 11 ชุดข้อสอบหลักสำหรับทำเป็นคอลัมน์ในตาราง Matrix
+    const MODULE_LIST = [
+      { key: "PRUgreat", label: "PRUgreat return 20/10" },
+      { key: "SuperSmartSave", label: "SuperSmartSave 20/9" },
+      { key: "PRUClick", label: "PRUClick Savings 20/9" },
+      { key: "PRUMhao", label: "PRUMhao Mhao Double Sure" },
+      { key: "Healthy Plus", label: "PRU Healthy Plus" },
+      { key: "ฟอกเงิน", label: "ป้องกันการฟอกเงิน (AML)" },
+      { key: "Underwriting", label: "Underwriting" },
+      { key: "Copayment", label: "Copayment" },
+      { key: "FATCA", label: "FATCA & CRS" },
+      { key: "QC Matrix", label: "QC Matrix" },
+      { key: "Salesforce", label: "Salesforce" }
+    ];
+
     const QUESTIONS_LIST = [
       "คำถามอัตนัยข้อที่ 1 (ไม่สนใจประกันครับ/ค่ะ)",
       "คำถามอัตนัยข้อที่ 2 (มีประกันอยู่แล้วหลายตัว?)",
@@ -36,10 +51,19 @@
 
     let globalCandidateMap = {};
 
-    // 📌 ดึงข้อมูลจาก Supabase ทั้ง quiz_results และ subjective_answers
+    // 📌 ฟังก์ชันแมปชื่อชุดข้อสอบให้ตรงกับคอลัมน์หลัก
+    function matchModuleKey(quizSetName) {
+      if (!quizSetName) return null;
+      for (const m of MODULE_LIST) {
+        if (quizSetName.includes(m.key)) return m.key;
+      }
+      return null;
+    }
+
+    // 📌 ดึงข้อมูลจาก Supabase พร้อมตัวกรองวันที่และคีย์เวิร์ด
     async function fetchData() {
       const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
-      const date = document.getElementById("dateInput").value.trim();
+      const dateFilter = document.getElementById("dateInput").value.trim();
 
       try {
         const { data: users } = await supabase.from("users").select("*");
@@ -51,7 +75,6 @@
           if (u.email) userMap[u.email.toLowerCase().trim()] = u;
         });
 
-        // ฟังก์ชันจัดระเบียบข้อมูลผู้ใช้กลาง
         const resolveUser = (r) => {
           const emailKey = (r.user_email || r.email || '').toLowerCase().trim();
           const matchedUser = userMap[emailKey];
@@ -75,14 +98,19 @@
           return { name: finalName, experience: finalExp, email: emailKey || 'N/A' };
         };
 
-        // รวบรวมข้อมูลทั้งหมดผูกเข้ากับรายชื่อพนักงาน
         globalCandidateMap = {};
 
         // 1. ประมวลผลข้อสอบปรนัย (11 ชุด)
         (quizResults || []).forEach(r => {
-          const userInfo = resolveUser(r);
-          const key = userInfo.name;
+          const createdDate = r.created_at ? r.created_at.split('T')[0] : '';
+          if (dateFilter && createdDate !== dateFilter) return;
 
+          const userInfo = resolveUser(r);
+          if (keyword && !userInfo.name.toLowerCase().includes(keyword) && !userInfo.email.toLowerCase().includes(keyword) && !userInfo.experience.toLowerCase().includes(keyword)) {
+            return;
+          }
+
+          const key = userInfo.name;
           if (!globalCandidateMap[key]) {
             globalCandidateMap[key] = {
               name: userInfo.name,
@@ -93,24 +121,35 @@
             };
           }
 
-          const modName = r.quiz_set || "แบบทดสอบทั่วไป";
-          const totalQ = r.total_questions || 10;
-          const pct = Math.round(((r.score || 0) / totalQ) * 100);
-
-          globalCandidateMap[key].quizScores[modName] = {
-            score: r.score,
-            total: totalQ,
-            pct: pct,
-            passed: pct >= 80,
-            date: r.created_at
-          };
+          const modKey = matchModuleKey(r.quiz_set);
+          if (modKey) {
+            const totalQ = r.total_questions || 10;
+            const pct = Math.round(((r.score || 0) / totalQ) * 100);
+            
+            // เก็บเฉพาะรอบล่าสุดหรือคะแนนที่ดีที่สุด
+            if (!globalCandidateMap[key].quizScores[modKey] || pct > globalCandidateMap[key].quizScores[modKey].pct) {
+              globalCandidateMap[key].quizScores[modKey] = {
+                score: r.score,
+                total: totalQ,
+                pct: pct,
+                passed: pct >= 80,
+                date: r.created_at
+              };
+            }
+          }
         });
 
-        // 2. ประมวลผลข้อสอบอัตนัย (Pre-test / Post-test / สถานการณ์จำลอง)
+        // 2. ประมวลผลข้อสอบอัตนัย
         (subjectiveAnswers || []).forEach(r => {
-          const userInfo = resolveUser(r);
-          const key = userInfo.name;
+          const createdDate = r.created_at ? r.created_at.split('T')[0] : '';
+          if (dateFilter && createdDate !== dateFilter) return;
 
+          const userInfo = resolveUser(r);
+          if (keyword && !userInfo.name.toLowerCase().includes(keyword) && !userInfo.email.toLowerCase().includes(keyword) && !userInfo.experience.toLowerCase().includes(keyword)) {
+            return;
+          }
+
+          const key = userInfo.name;
           if (!globalCandidateMap[key]) {
             globalCandidateMap[key] = {
               name: userInfo.name,
@@ -128,15 +167,7 @@
           });
         });
 
-        // กรองข้อมูลตาม Keyword และ Date
-        let candidatesArray = Object.values(globalCandidateMap);
-        if (keyword) {
-          candidatesArray = candidatesArray.filter(c => 
-            c.name.toLowerCase().includes(keyword) || 
-            c.email.toLowerCase().includes(keyword) || 
-            c.experience.toLowerCase().includes(keyword)
-          );
-        }
+        const candidatesArray = Object.values(globalCandidateMap);
 
         renderSummaryStats(candidatesArray);
         renderMatrixTable(candidatesArray);
@@ -156,8 +187,7 @@
       let quizCountForAvg = 0;
 
       candidates.forEach(c => {
-        const qLen = Object.keys(c.quizScores).length;
-        totalQuizzesCount += qLen;
+        totalQuizzesCount += Object.keys(c.quizScores).length;
         totalSubjectiveCount += c.subjectiveTests.length;
 
         Object.values(c.quizScores).forEach(q => {
@@ -171,66 +201,125 @@
       document.getElementById("avgScore").innerText = quizCountForAvg > 0 ? (sumPct / quizCountForAvg).toFixed(1) + "%" : "0%";
     }
 
-    // 📌 แสดงตารางภาพรวมรายบุคคล
+    // 📌 สร้างตาราง Matrix แสดงผลแยกรายคอลัมน์ 11 ชุด
     function renderMatrixTable(candidates) {
-      const tableBody = document.getElementById("matrixTableBody");
-      tableBody.innerHTML = "";
+      const thead = document.getElementById("matrixTableHead");
+      const tbody = document.getElementById("matrixTableBody");
+      thead.innerHTML = "";
+      tbody.innerHTML = "";
+
+      // สร้างหัวตาราง (Header)
+      let headerHTML = `
+        <tr>
+          <th>#</th>
+          <th>ชื่อพนักงาน</th>
+          <th>ประสบการณ์</th>
+      `;
+      MODULE_LIST.forEach(m => {
+        headerHTML += `<th style="text-align:center; font-size:0.85rem; min-width:100px;">${m.label}</th>`;
+      });
+      headerHTML += `
+          <th style="text-align:center;">อัตนัย</th>
+          <th style="text-align:center;">จัดการ</th>
+        </tr>
+      `;
+      thead.innerHTML = headerHTML;
 
       if (candidates.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#888;">ไม่พบข้อมูลพนักงาน</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${MODULE_LIST.length + 5}" style="text-align:center; color:#888;">ไม่พบข้อมูลพนักงานตามเงื่อนไข</td></tr>`;
         return;
       }
 
+      // สร้างแถวข้อมูลพนักงานแต่ละคน
       candidates.forEach((c, i) => {
         const row = document.createElement("tr");
-        const quizPassed = Object.values(c.quizScores).filter(q => q.passed).length;
-        const quizTotal = Object.keys(c.quizScores).length;
-        const subjTotal = c.subjectiveTests.length;
-
-        row.innerHTML = `
+        
+        let rowHTML = `
           <td>${i + 1}</td>
           <td><strong>${c.name}</strong><br><small style="color:#64748b;">${c.email}</small></td>
           <td><span class="badge-exp">${c.experience}</span></td>
-          <td><span class="badge-score" style="background:#e0f2fe; color:#0369a1;">ทำแล้ว ${quizTotal} ชุด (ผ่าน ${quizPassed})</span></td>
-          <td><span class="badge-score" style="background:#f3e8ff; color:#6b21a8;">ส่งแล้ว ${subjTotal} ชุด</span></td>
-          <td>
-            <button class="btn-action" onclick='openCandidateReport(${JSON.stringify(c)})'>🔍 ดูรายงานฉบับเต็ม</button>
+        `;
+
+        // วนลูปแสดงผลคะแนนแต่ละชุดข้อสอบตามคอลัมน์
+        MODULE_LIST.forEach(m => {
+          const testData = c.quizScores[m.key];
+          if (testData) {
+            const bg = testData.passed ? "#d1ffd1" : "#ffd1d1";
+            const color = testData.passed ? "#005900" : "#900";
+            rowHTML += `
+              <td style="text-align:center;">
+                <span style="background:${bg}; color:${color}; padding:4px 8px; border-radius:6px; font-weight:bold; font-size:0.85rem; display:inline-block;">
+                  ${testData.pct}%
+                </span>
+                <br><small style="color:#555;">(${testData.score}/${testData.total})</small>
+              </td>
+            `;
+          } else {
+            rowHTML += `<td style="text-align:center; color:#cbd5e1;">-</td>`;
+          }
+        });
+
+        const subjCount = c.subjectiveTests.length;
+        rowHTML += `
+          <td style="text-align:center;"><span class="badge-score" style="background:#f3e8ff; color:#6b21a8;">ส่ง ${subjCount} ชุด</span></td>
+          <td style="text-align:center;">
+            <button class="btn-action" onclick='openCandidateReport(${JSON.stringify(c)})'>🔍 รายงาน & AI</button>
           </td>
         `;
-        tableBody.appendChild(row);
+
+        row.innerHTML = rowHTML;
+        tbody.appendChild(row);
       });
     }
 
-    // 📌 เปิดรายงานฉบับเต็มรายบุคคล (รวมทั้ง 11 ชุดปรนัย + อัตนัย)
-    window.openCandidateReport = function(c) {
+    // 📌 เรียก Serverless API บน Vercel สำหรับวิเคราะห์ด้วย Gemini AI
+    async function evaluateCandidateWithVercelAPI(candidateData) {
+      try {
+        const response = await fetch('/api/analyze', {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ candidateData })
+        });
+        
+        if (!response.ok) throw new Error("ไม่สามารถเชื่อมต่อกับ Serverless Function บน Vercel ได้");
+        return await response.json();
+      } catch (err) {
+        console.error("Vercel API Error:", err);
+        return null;
+      }
+    }
+
+    // 📌 เปิด Modal รายงานรายบุคคล
+    window.openCandidateReport = async function(c) {
       const modalContent = document.getElementById("modalReportContent");
 
-      // สร้างตารางสรุปปรนัย 11 ชุด
       let quizRows = "";
       if (Object.keys(c.quizScores).length === 0) {
         quizRows = `<tr><td colspan="4" style="text-align:center; color:#888;">ยังไม่มีประวัติการทำแบบทดสอบปรนัย</td></tr>`;
       } else {
-        for (const [modName, data] of Object.entries(c.quizScores)) {
-          const badge = data.passed 
-            ? `<span style="color:#005900; background:#d1ffd1; padding:2px 6px; border-radius:4px; font-weight:bold;">ผ่าน (>=80%)</span>`
-            : `<span style="color:#900; background:#ffd1d1; padding:2px 6px; border-radius:4px; font-weight:bold;">ไม่ผ่าน</span>`;
-          quizRows += `
-            <tr>
-              <td style="padding:8px; border-bottom:1px solid #eee;">${modName}</td>
-              <td style="padding:8px; border-bottom:1px solid #eee; text-align:center;">${data.score} / ${data.total}</td>
-              <td style="padding:8px; border-bottom:1px solid #eee; text-align:center;"><strong>${data.pct}%</strong></td>
-              <td style="padding:8px; border-bottom:1px solid #eee; text-align:center;">${badge}</td>
-            </tr>
-          `;
-        }
+        MODULE_LIST.forEach(m => {
+          const data = c.quizScores[m.key];
+          if (data) {
+            const badge = data.passed 
+              ? `<span style="color:#005900; background:#d1ffd1; padding:2px 6px; border-radius:4px; font-weight:bold;">ผ่าน (>=80%)</span>`
+              : `<span style="color:#900; background:#ffd1d1; padding:2px 6px; border-radius:4px; font-weight:bold;">ไม่ผ่าน</span>`;
+            quizRows += `
+              <tr>
+                <td style="padding:8px; border-bottom:1px solid #eee;">${m.label}</td>
+                <td style="padding:8px; border-bottom:1px solid #eee; text-align:center;">${data.score} / ${data.total}</td>
+                <td style="padding:8px; border-bottom:1px solid #eee; text-align:center;"><strong>${data.pct}%</strong></td>
+                <td style="padding:8px; border-bottom:1px solid #eee; text-align:center;">${badge}</td>
+              </tr>
+            `;
+          }
+        });
       }
 
-      // สร้างรายละเอียดข้อสอบอัตนัย (Pre/Post Test)
       let subjectiveHTML = "";
       if (c.subjectiveTests.length === 0) {
         subjectiveHTML = `<p style="color:#888; font-style:italic;">ยังไม่มีประวัติการทำข้อสอบอัตนัย</p>`;
       } else {
-        c.subjectiveTests.forEach((sub, idx) => {
+        c.subjectiveTests.forEach((sub) => {
           let ansList = "";
           const answers = sub.answers;
           if (Array.isArray(answers)) {
@@ -240,30 +329,43 @@
               return `<div style="margin-bottom:6px; font-size:0.9rem;"><strong style="color:#007acc;">${qText}</strong><br><span style="color:#333;">ตอบ: ${val || '-'}</span></div>`;
             }).join("");
           }
-
-          subjectiveHTML += `
-            <div style="background:#f8fafc; border:1px solid #cbd5e1; padding:12px; border-radius:6px; margin-bottom:10px;">
-              <p style="margin:0 0 8px 0; font-size:0.85rem; color:#64748b;">ครั้งที่ส่ง: ${new Date(sub.date).toLocaleString('th-TH')}</p>
-              ${ansList}
-            </div>
-          `;
+          subjectiveHTML += `<div style="background:#f8fafc; border:1px solid #cbd5e1; padding:12px; border-radius:6px; margin-bottom:10px;">${ansList}</div>`;
         });
       }
 
       modalContent.innerHTML = `
         <div style="background:#ffffff; padding:20px; color:#333; font-family:'Sarabun', sans-serif;" id="printableCard">
-          <div style="border-bottom: 2px solid #007acc; padding-bottom: 10px; margin-bottom: 20px;">
-            <h2 style="color:#007acc; margin:0; font-size:20px;">📊 รายงานผลการประเมินรอบด้าน (Final Day Comprehensive Report)</h2>
-            <p style="margin:5px 0 0 0; color:#64748b; font-size:13px;">วันที่ออกรายงาน: ${new Date().toLocaleDateString('th-TH')}</p>
+          <div style="border-bottom: 2px solid #007acc; padding-bottom: 10px; margin-bottom: 20px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <h2 style="color:#007acc; margin:0; font-size:20px;">📊 รายงานผลการประเมินรอบด้าน & AI Analytics</h2>
+              <p style="margin:5px 0 0 0; color:#64748b; font-size:13px;">พนักงาน: ${c.name} | วันที่: ${new Date().toLocaleDateString('th-TH')}</p>
+            </div>
+            <button class="btn-action" id="aiAnalyzeBtn" style="background:#8b5cf6;" onclick="triggerAIAnalysis()">🤖 ให้ AI วิเคราะห์เชิงลึก</button>
           </div>
 
           <div style="background:#f8fafc; padding:12px; border-radius:6px; margin-bottom:15px; border:1px solid #e2e8f0;">
-            <p style="margin:3px 0;"><strong>ชื่อ-นามสกุล:</strong> ${c.name}</p>
-            <p style="margin:3px 0;"><strong>อีเมล:</strong> ${c.email}</p>
+            <p style="margin:3px 0;"><strong>ชื่อ-นามสกุล:</strong> ${c.name} (${c.email})</p>
             <p style="margin:3px 0;"><strong>ประสบการณ์:</strong> <span class="badge-exp">${c.experience}</span></p>
           </div>
 
-          <h3 style="color:#2c3e50; font-size:15px; margin-top:15px;">📋 ผลคะแนนแบบทดสอบปรนัย (รายชุดหลักสูตร)</h3>
+          <div id="aiAnalysisContainer" style="margin-bottom:20px;">
+            <div class="swot-grid">
+              <div class="swot-card strength">
+                <h4>💪 จุดแข็ง (Strengths)</h4>
+                <textarea id="inputStrengths" class="auto-textarea" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
+              </div>
+              <div class="swot-card weakness">
+                <h4>⚠️ จุดที่ควรพัฒนา (Weaknesses)</h4>
+                <textarea id="inputWeaknesses" class="auto-textarea" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
+              </div>
+            </div>
+            <div class="swot-card recommendation" style="margin-top:12px;">
+              <h4>💡 แนวทางการโค้ชชิ่งเฉพาะบุคคล (Action Plan)</h4>
+              <textarea id="inputRecommendations" class="auto-textarea" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
+            </div>
+          </div>
+
+          <h3 style="color:#2c3e50; font-size:15px; margin-top:15px;">📋 ผลคะแนนแบบทดสอบปรนัย (รายวิชา)</h3>
           <table style="width:100%; border-collapse:collapse; margin-bottom:15px; font-size:0.9rem;">
             <thead>
               <tr style="background:#007acc; color:white;">
@@ -282,6 +384,25 @@
       `;
 
       document.getElementById("individualModal").style.display = "block";
+
+      window.triggerAIAnalysis = async function() {
+        const btn = document.getElementById("aiAnalyzeBtn");
+        btn.disabled = true;
+        btn.innerText = "⏳ AI กำลังวิเคราะห์ข้อมูลผ่าน Vercel...";
+        
+        const aiResult = await evaluateCandidateWithVercelAPI(c);
+        if (aiResult && aiResult.strengths) {
+          document.getElementById("inputStrengths").value = (aiResult.strengths || []).map(s => `• ${s}`).join('\n');
+          document.getElementById("inputWeaknesses").value = (aiResult.weaknesses || []).map(w => `• ${w}`).join('\n');
+          document.getElementById("inputRecommendations").value = (aiResult.recommendations || []).map(r => `• ${r}`).join('\n');
+          alert("AI วิเคราะห์ข้อมูลสำเร็จแล้วครับ!");
+        } else {
+          alert("เกิดข้อผิดพลาดในการเชื่อมต่อ AI Backend บน Vercel");
+        }
+        btn.disabled = false;
+        btn.innerText = "🤖 ให้ AI วิเคราะห์เชิงลึกอีกครั้ง";
+      };
+
       document.getElementById("downloadIndividualPDFBtn").onclick = function() {
         downloadPDFReport(c.name);
       };
@@ -292,7 +413,26 @@
     };
 
     function downloadPDFReport(name) {
-      const element = document.getElementById("printableCard");
+      const btn = document.getElementById("downloadIndividualPDFBtn");
+      btn.disabled = true;
+      btn.innerText = "⏳ กำลังสร้าง PDF...";
+
+      const strengthsVal = document.getElementById("inputStrengths").value.trim();
+      const weaknessesVal = document.getElementById("inputWeaknesses").value.trim();
+      const recsVal = document.getElementById("inputRecommendations").value.trim();
+
+      const strengthsList = strengthsVal ? strengthsVal.split('\n').filter(s => s.trim() !== '').map(s => `<li>${s.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
+      const weaknessesList = weaknessesVal ? weaknessesVal.split('\n').filter(w => w.trim() !== '').map(w => `<li>${w.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
+      const recsList = recsVal ? recsVal.split('\n').filter(r => r.trim() !== '').map(r => `<li>${r.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
+
+      const element = document.getElementById("printableCard").cloneNode(true);
+      const aiBtn = element.querySelector('#aiAnalyzeBtn');
+      if (aiBtn) aiBtn.remove();
+
+      element.querySelector('.swot-card.strength').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px;">${strengthsList}</ul>`;
+      element.querySelector('.swot-card.weakness').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px;">${weaknessesList}</ul>`;
+      element.querySelector('.swot-card.recommendation').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px;">${recsList}</ul>`;
+
       const opt = {
         margin: [0.3, 0.3, 0.3, 0.3],
         filename: `รายงานรอบด้าน_${name}.pdf`,
@@ -300,32 +440,49 @@
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
       };
-      html2pdf().set(opt).from(element).save();
+
+      html2pdf().set(opt).from(element).save().then(() => {
+        btn.disabled = false;
+        btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
+      }).catch(err => {
+        console.error("PDF Export Error:", err);
+        btn.disabled = false;
+        btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
+      });
     }
 
     function renderChart(candidates) {
       const ctx = document.getElementById("scoreChart").getContext("2d");
       const moduleSummary = {};
 
+      MODULE_LIST.forEach(m => {
+        moduleSummary[m.label] = { sum: 0, count: 0 };
+      });
+
       candidates.forEach(c => {
-        for (const [modName, data] of Object.entries(c.quizScores)) {
-          if (!moduleSummary[modName]) moduleSummary[modName] = { sum: 0, count: 0 };
-          moduleSummary[modName].sum += data.pct;
-          moduleSummary[modName].count += 1;
+        for (const [modKey, data] of Object.entries(c.quizScores)) {
+          const matchObj = MODULE_LIST.find(m => m.key === modKey);
+          if (matchObj) {
+            moduleSummary[matchObj.label].sum += data.pct;
+            moduleSummary[matchObj.label].count += 1;
+          }
         }
       });
 
-      const labels = Object.keys(moduleSummary);
-      const averages = labels.map(l => (moduleSummary[l].sum / moduleSummary[l].count).toFixed(1));
+      const labels = MODULE_LIST.map(m => m.label);
+      const averages = labels.map(l => {
+        const item = moduleSummary[l];
+        return item.count > 0 ? (item.sum / item.count).toFixed(1) : 0;
+      });
 
       if (window.scoreChartInstance) window.scoreChartInstance.destroy();
 
       window.scoreChartInstance = new Chart(ctx, {
         type: "bar",
         data: {
-          labels: labels.map(l => l.replace("แบบทดสอบปรนัย: ", "")),
+          labels: labels,
           datasets: [{
-            label: "คะแนนเฉลี่ยรวมภาพรวม (%)",
+            label: "คะแนนเฉลี่ยรวมภาพรวม (%) แยกตามรายวิชา",
             data: averages,
             backgroundColor: "rgba(0, 122, 204, 0.75)",
             borderColor: "rgba(0, 122, 204, 1)",
@@ -344,8 +501,8 @@
     function downloadExcel() {
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.table_to_sheet(document.getElementById("matrixTable"));
-      XLSX.utils.book_append_sheet(wb, ws, "สรุปผลภาพรวม");
-      XLSX.writeFile(wb, "Comprehensive_Evaluation.xlsx");
+      XLSX.utils.book_append_sheet(wb, ws, "Matrix Summary");
+      XLSX.writeFile(wb, "Comprehensive_Matrix_Evaluation.xlsx");
     }
 
     window.addEventListener("DOMContentLoaded", () => {
@@ -357,7 +514,7 @@
 
   <style>
     body { font-family: 'Sarabun', sans-serif; background: #f4f7f9; color: #333; margin: 0; padding: 30px 15px; }
-    #dashboard { max-width: 1200px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+    #dashboard { max-width: 1400px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
     h2 { text-align: center; color: #007acc; font-weight: 700; margin-top: 0; margin-bottom: 25px; }
     h3 { color: #2c3e50; font-size: 1.15rem; margin-top: 30px; margin-bottom: 15px; border-left: 4px solid #007acc; padding-left: 10px; }
     .kpi-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
@@ -375,15 +532,27 @@
     .btn-action { background: #0284c7; color: white; border: none; padding: 6px 12px; font-size: 0.85rem; border-radius: 4px; cursor: pointer; }
     .btn-action:hover { background: #0369a1; }
     .chart-container { background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 25px; }
-    table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 25px; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; }
-    th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 0.95rem; vertical-align: middle; }
-    th { background: #007acc; color: white; font-weight: 600; }
+    .table-responsive { width: 100%; overflow-x: auto; margin-bottom: 25px; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff; }
+    .swot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    @media (max-width: 600px) { .swot-grid { grid-template-columns: 1fr; } }
+    .swot-card { padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .swot-card.strength { background-color: #f0fdf4; border-color: #bbf7d0; }
+    .swot-card.strength h4 { color: #166534; margin-top: 0; }
+    .swot-card.weakness { background-color: #fef2f2; border-color: #fecaca; }
+    .swot-card.weakness h4 { color: #991b1b; margin-top: 0; }
+    .swot-card.recommendation { background-color: #eff6ff; border-color: #bfdbfe; }
+    .swot-card.recommendation h4 { color: #1e40af; margin-top: 0; }
+    .auto-textarea { width: 100%; min-height: 80px; padding: 8px; font-family: 'Sarabun', sans-serif; font-size: 0.9rem; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; background: #fff; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; background: #fff; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #f1f5f9; font-size: 0.9rem; vertical-align: middle; }
+    th:last-child, td:last-child { border-right: none; }
+    th { background: #007acc; color: white; font-weight: 600; white-space: nowrap; }
     tr:last-child td { border-bottom: none; }
     tr:hover td { background-color: #f8fafc; }
     .badge-score { background-color: #e0f2fe; color: #0369a1; font-weight: bold; padding: 3px 8px; border-radius: 12px; display: inline-block; }
     .badge-exp { background-color: #f1f5f9; color: #475569; font-weight: 600; padding: 3px 8px; border-radius: 6px; border: 1px solid #cbd5e1; display: inline-block; }
     .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); overflow-y: auto; }
-    .modal-content { background-color: #fff; margin: 40px auto; padding: 30px; border-radius: 12px; max-width: 900px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); position: relative; }
+    .modal-content { background-color: #fff; margin: 40px auto; padding: 30px; border-radius: 12px; max-width: 950px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); position: relative; }
     .close-btn { position: absolute; right: 20px; top: 15px; font-size: 28px; font-weight: bold; color: #aaa; cursor: pointer; }
     .close-btn:hover { color: #333; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 15px; }
@@ -391,7 +560,7 @@
 </head>
 <body>
   <div id="dashboard">
-    <h2>🎯 แดชบอร์ดสรุปผลการประเมินรอบด้าน (ปรนัย 11 ชุด + อัตนัย)</h2>
+    <h2>🎯 แดชบอร์ดสรุปผลการประเมินรายวิชาแบบเมทริกซ์ (Matrix Evaluation 11 ชุด)</h2>
     
     <div class="search-box">
       <input type="text" id="searchInput" placeholder="ค้นหาด้วยชื่อพนักงาน หรือ อีเมล">
@@ -426,20 +595,13 @@
       <canvas id="scoreChart" height="90"></canvas>
     </div>
 
-    <h3>📋 ตารางสรุปผลการประเมินรายบุคคล (ปรนัยและอัตนัย)</h3>
-    <table id="matrixTable">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>ชื่อพนักงาน / อีเมล</th>
-          <th>ประสบการณ์</th>
-          <th>ผลงานปรนัย</th>
-          <th>ผลงานอัตนัย</th>
-          <th>จัดการ / ดูรายงานฉบับเต็ม</th>
-        </tr>
-      </thead>
-      <tbody id="matrixTableBody"></tbody>
-    </table>
+    <h3>📋 ตารางเมทริกซ์ผลการสอบรายบุคคล (แยกตามชุดแบบทดสอบทั้ง 11 ชุด)</h3>
+    <div class="table-responsive">
+      <table id="matrixTable">
+        <thead id="matrixTableHead"></thead>
+        <tbody id="matrixTableBody"></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Modal รายงานรายบุคคล -->
