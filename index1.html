@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>แดชบอร์ดสรุปผลการสอบ 11 ชุด (Final Day Evaluation)</title>
+  
+  <!-- Fonts & Libraries -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
+    // 📌 Supabase Configuration
+    const supabaseUrl = 'https://wzwyotzzxycqfwercakh.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno';
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    let globalQuizData = [];
+    let globalSubjectiveData = [];
+
+    // รายชื่อชุดข้อสอบหลักทั้ง 11 ชุด + Pre-test (อิงตาม quiz_set ที่บันทึกไว้)
+    const ALL_MODULES = [
+      "แบบทดสอบปรนัย: PRUClick Savings Plus 20/9",
+      "แบบทดสอบปรนัย: PRUMhao Mhao Double Sure",
+      "แบบทดสอบปรนัย: PRU Healthy Plus",
+      "แบบทดสอบปรนัย: Compliance",
+      "แบบทดสอบปรนัย: Underwriting",
+      "แบบทดสอบปรนัย: FATCA & CRS",
+      "แบบทดสอบปรนัย: QC Matrix",
+      "แบบทดสอบปรนัย: SalesForce",
+      "แบบทดสอบปรนัย: Copayment"
+    ];
+
+    // 📌 ดึงข้อมูลจาก Supabase
+    async function fetchData() {
+      const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
+      const date = document.getElementById("dateInput").value.trim();
+
+      try {
+        const { data: users } = await supabase.from("users").select("*");
+        const { data: quizResults, error: quizError } = await supabase.from("quiz_results").select("*").order('created_at', { ascending: false });
+        const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*").order('created_at', { ascending: false });
+
+        if (quizError) console.error("Error quiz_results:", quizError);
+
+        const userMap = {};
+        (users || []).forEach(u => {
+          if (u.email) userMap[u.email.toLowerCase().trim()] = u;
+        });
+
+        const mapData = (list) => (list || []).map(r => {
+          const emailKey = (r.user_email || r.email || '').toLowerCase().trim();
+          const matchedUser = userMap[emailKey];
+
+          let finalName = 'ไม่ระบุชื่อ';
+          if (r.name && r.name !== 'EMPTY' && r.name.trim() !== '') {
+            finalName = r.name;
+          } else if (matchedUser && matchedUser.full_name) {
+            finalName = matchedUser.full_name;
+          } else if (emailKey) {
+            finalName = emailKey;
+          }
+
+          let finalExp = 'ไม่ระบุ';
+          if (r.experience !== null && r.experience !== undefined && r.experience !== '') {
+            finalExp = String(r.experience);
+          } else if (matchedUser && matchedUser.experience) {
+            finalExp = String(matchedUser.experience);
+          }
+
+          return {
+            ...r,
+            name: finalName,
+            experience: finalExp
+          };
+        });
+
+        globalQuizData = mapData(quizResults);
+        globalSubjectiveData = mapData(subjectiveAnswers);
+
+        // Filter ตาม Keyword และ Date
+        const filteredQuiz = globalQuizData.filter(r => {
+          const matchName = r.name && r.name.toLowerCase().includes(keyword);
+          const matchEmail = (r.user_email || r.email) && (r.user_email || r.email).toLowerCase().includes(keyword);
+          const matchExp = r.experience && r.experience.toLowerCase().includes(keyword);
+          const matchDate = !date || (r.created_at && r.created_at.startsWith(date));
+          return (!keyword || matchName || matchEmail || matchExp) && matchDate;
+        });
+
+        renderSummaryStats(filteredQuiz);
+        renderMatrixTable(filteredQuiz);
+        renderChart(filteredQuiz);
+
+      } catch (err) {
+        console.error("Fetch Data Error:", err);
+      }
+    }
+
+    function renderSummaryStats(quizData) {
+      if (!quizData || quizData.length === 0) {
+        document.getElementById("avgScore").innerText = "0";
+        document.getElementById("totalTests").innerText = "0";
+        document.getElementById("totalCandidates").innerText = "0";
+        return;
+      }
+      
+      const uniqueUsers = new Set(quizData.map(r => r.name)).size;
+      const totalTests = quizData.length;
+      const sumPercentages = quizData.reduce((acc, curr) => {
+        const totalQ = curr.total_questions || curr.total || 1;
+        return acc + ((curr.score || 0) / totalQ) * 100;
+      }, 0);
+      const avgPercent = (sumPercentages / totalTests).toFixed(1);
+
+      document.getElementById("totalCandidates").innerText = uniqueUsers;
+      document.getElementById("totalTests").innerText = totalTests;
+      document.getElementById("avgScore").innerText = avgPercent + "%";
+    }
+
+    // 📌 สร้างตาราง Matrix สรุปผลสอบทั้ง 11 ชุดรายบุคคล
+    function renderMatrixTable(quizData) {
+      const tableBody = document.getElementById("matrixTableBody");
+      tableBody.innerHTML = "";
+
+      // จัดกลุ่มข้อมูลตามชื่อพนักงาน
+      const userGroup = {};
+      quizData.forEach(r => {
+        const nameKey = r.name;
+        if (!userGroup[nameKey]) {
+          userGroup[nameKey] = {
+            name: nameKey,
+            experience: r.experience,
+            email: r.user_email || r.email || '-',
+            scores: {} // เก็บผลคะแนนแยกตามชุดข้อสอบ
+          };
+        }
+        // บันทึกคะแนนของชุดนี้ (ถ้าสอบหลายครั้ง เอาครั้งล่าสุดหรือคะแนนสูงสุด)
+        const moduleName = r.quiz_set || "แบบทดสอบทั่วไป";
+        const pct = r.total_questions ? Math.round((r.score / r.total_questions) * 100) : 0;
+        
+        // เก็บค่าเปอร์เซ็นต์ (ถ้ามีหลายรอบ เลือกครั้งล่าสุด)
+        userGroup[nameKey].scores[moduleName] = {
+          score: r.score,
+          total: r.total_questions,
+          pct: pct,
+          passed: pct >= 80
+        };
+      });
+
+      const usersArray = Object.values(userGroup);
+
+      if (usersArray.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#888;">ไม่พบข้อมูลการทำแบบทดสอบ</td></tr>`;
+        return;
+      }
+
+      usersArray.forEach((u, i) => {
+        const row = document.createElement("tr");
+        
+        // คำนวณจำนวนชุดที่สอบผ่าน
+        const passedCount = Object.values(u.scores).filter(s => s.passed).length;
+        const totalTaken = Object.keys(u.scores).length;
+
+        row.innerHTML = `
+          <td>${i + 1}</td>
+          <td><strong>${u.name}</strong><br><small style="color:#64748b;">${u.email}</small></td>
+          <td><span class="badge-exp">${u.experience}</span></td>
+          <td><span class="badge-score" style="background:#d1ffd1; color:#005900;">ผ่าน ${passedCount} ชุด</span> (จากที่ทำ ${totalTaken} ชุด)</td>
+          <td>
+            <button class="btn-action" onclick='openCandidateReport(${JSON.stringify(u)})'>🔍 ดูใบสรุปผลรายบุคคล</button>
+          </td>
+        `;
+        tableBody.appendChild(row);
+      });
+    }
+
+    // 📌 เปิด Modal รายงานสรุปผลรายบุคคลสำหรับวันสุดท้าย (Final Day Report Card)
+    window.openCandidateReport = function(userData) {
+      const modalContent = document.getElementById("modalReportContent");
+      
+      let modulesHTML = "";
+      let totalScoreSum = 0;
+      let countModules = 0;
+
+      // วนลูปแสดงผลทุกชุดที่พนักงานคนนี้เคยทำ
+      for (const [modName, data] of Object.entries(userData.scores)) {
+        totalScoreSum += data.pct;
+        countModules++;
+        const statusBadge = data.passed 
+          ? `<span style="background:#d1ffd1; color:#005900; padding:2px 8px; border-radius:4px; font-weight:bold;">ผ่านเกณฑ์ (>=80%)</span>`
+          : `<span style="background:#ffd1d1; color:#900; padding:2px 8px; border-radius:4px; font-weight:bold;">ไม่ผ่านเกณฑ์</span>`;
+
+        modulesHTML += `
+          <tr>
+            <td>${modName}</td>
+            <td style="text-align:center;">${data.score} / ${data.total}</td>
+            <td style="text-align:center;"><strong>${data.pct}%</strong></td>
+            <td style="text-align:center;">${statusBadge}</td>
+          </tr>
+        `;
+      }
+
+      const overallAvg = countModules > 0 ? (totalScoreSum / countModules).toFixed(1) : 0;
+
+      modalContent.innerHTML = `
+        <div style="background:#ffffff; padding:20px; color:#333; font-family:'Sarabun', sans-serif;" id="printableCard">
+          <div style="border-bottom: 2px solid #007acc; padding-bottom: 10px; margin-bottom: 20px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <h2 style="color:#007acc; margin:0; font-size:22px;">📊 รายงานสรุปผลการประเมินรอบด้าน (Final Day Evaluation)</h2>
+              <p style="margin:5px 0 0 0; color:#64748b; font-size:14px;">โครงการอบรม Telesales & Insurance Training | วันที่ออกรายงาน: ${new Date().toLocaleDateString('th-TH')}</p>
+            </div>
+          </div>
+
+          <div style="background:#f8fafc; padding:15px; border-radius:8px; margin-bottom:20px; border:1px solid #e2e8f0; display:flex; justify-content:space-between;">
+            <div>
+              <p style="margin:4px 0;"><strong>ชื่อ-นามสกุล:</strong> ${userData.name}</p>
+              <p style="margin:4px 0;"><strong>อีเมล:</strong> ${userData.email}</p>
+              <p style="margin:4px 0;"><strong>ประสบการณ์ทำงาน:</strong> <span class="badge-exp">${userData.experience}</span></p>
+            </div>
+            <div style="text-align:right;">
+              <p style="margin:4px 0; font-size:1.1rem;"><strong>คะแนนเฉลี่ยรวมทุกชุด:</strong> <span style="color:#007acc; font-weight:bold; font-size:1.4rem;">${overallAvg}%</span></p>
+              <p style="margin:4px 0; color:#64748b;">จำนวนชุดข้อสอบที่ทำเสร็จ: ${countModules} ชุด</p>
+            </div>
+          </div>
+
+          <h3 style="color:#2c3e50; font-size:16px; margin-top:20px;">📋 ผลการทดสอบรายวิชา (ครบทุกหลักสูตร)</h3>
+          <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+            <thead>
+              <tr style="background:#007acc; color:white;">
+                <th style="padding:10px; text-align:left;">ชื่อชุดแบบทดสอบ</th>
+                <th style="padding:10px; text-align:center;">คะแนนที่ได้</th>
+                <th style="padding:10px; text-align:center;">คิดเป็น %</th>
+                <th style="padding:10px; text-align:center;">สถานะ</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${modulesHTML || '<tr><td colspan="4" style="text-align:center;">ไม่มีข้อมูลการทำข้อสอบ</td></tr>'}
+            </tbody>
+          </table>
+
+          <div class="swot-grid" style="margin-top:20px;">
+            <div class="swot-card strength">
+              <h4>💪 ความพร้อมและจุดเด่น</h4>
+              <textarea class="auto-textarea" placeholder="พิมพ์ความเห็นของเทรนเนอร์..."></textarea>
+            </div>
+            <div class="swot-card weakness">
+              <h4>⚠️ ส่วนที่ต้องโค้ชชิ่งเพิ่มเติมก่อนออกปฏิบัติงาน</h4>
+              <textarea class="auto-textarea" placeholder="พิมพ์ข้อเสนอแนะเพิ่มเติม..."></textarea>
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById("individualModal").style.display = "block";
+
+      document.getElementById("downloadIndividualPDFBtn").onclick = function() {
+        downloadPDFReport(userData.name);
+      };
+    };
+
+    window.closeModal = function() {
+      document.getElementById("individualModal").style.display = "none";
+    };
+
+    function downloadPDFReport(candidateName) {
+      const element = document.getElementById("printableCard");
+      const opt = {
+        margin:       [0.3, 0.3, 0.3, 0.3],
+        filename:     `รายงานสรุปผลรอบด้าน_${candidateName}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
+      };
+      html2pdf().set(opt).from(element).save();
+    }
+
+    function renderChart(data) {
+      const ctx = document.getElementById("scoreChart").getContext("2d");
+      
+      // หาค่าเฉลี่ยคะแนนตามชุดข้อสอบ
+      const moduleStats = {};
+      data.forEach(r => {
+        const mod = r.quiz_set || "อื่นๆ";
+        if (!moduleStats[mod]) moduleStats[mod] = { sum: 0, count: 0 };
+        const pct = r.total_questions ? (r.score / r.total_questions) * 100 : 0;
+        moduleStats[mod].sum += pct;
+        moduleStats[mod].count += 1;
+      });
+
+      const labels = Object.keys(moduleStats);
+      const averages = labels.map(l => (moduleStats[l].sum / moduleStats[l].count).toFixed(1));
+
+      if (window.scoreChartInstance) window.scoreChartInstance.destroy();
+
+      window.scoreChartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: labels.map(l => l.replace("แบบทดสอบปรนัย: ", "")),
+          datasets: [{
+            label: "คะแนนเฉลี่ยรวม (%) ของแต่ละชุดข้อสอบ",
+            data: averages,
+            backgroundColor: "rgba(0, 122, 204, 0.75)",
+            borderColor: "rgba(0, 122, 204, 1)",
+            borderWidth: 1,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { labels: { font: { family: 'Sarabun' } } } },
+          scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } }
+        }
+      });
+    }
+
+    function downloadExcel() {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.table_to_sheet(document.getElementById("matrixTable"));
+      XLSX.utils.book_append_sheet(wb, ws, "สรุปผลรายบุคคล 11 ชุด");
+      XLSX.writeFile(wb, "Final_Evaluation_Summary.xlsx");
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("searchBtn").addEventListener("click", fetchData);
+      document.getElementById("downloadExcelBtn").addEventListener("click", downloadExcel);
+      fetchData();
+    });
+  </script>
+
+  <style>
+    body { font-family: 'Sarabun', sans-serif; background: #f4f7f9; color: #333; margin: 0; padding: 30px 15px; }
+    #dashboard { max-width: 1200px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+    h2 { text-align: center; color: #007acc; font-weight: 700; margin-top: 0; margin-bottom: 25px; }
+    h3 { color: #2c3e50; font-size: 1.15rem; margin-top: 30px; margin-bottom: 15px; border-left: 4px solid #007acc; padding-left: 10px; }
+    .kpi-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
+    .kpi-card { background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; text-align: center; }
+    .kpi-card .number { font-size: 1.8rem; font-weight: 700; color: #007acc; }
+    .kpi-card .label { font-size: 0.85rem; color: #64748b; }
+    .search-box { display: flex; gap: 12px; margin-bottom: 20px; justify-content: center; flex-wrap: wrap; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+    input, button { padding: 10px 16px; font-size: 0.95rem; font-family: 'Sarabun', sans-serif; border-radius: 6px; border: 1px solid #cbd5e1; outline: none; }
+    input:focus { border-color: #007acc; box-shadow: 0 0 0 3px rgba(0, 122, 204, 0.15); }
+    button { background: #007acc; color: white; border: none; font-weight: 600; cursor: pointer; }
+    button:hover { background: #005999; }
+    .btn-group { display: flex; gap: 10px; justify-content: flex-end; margin-bottom: 20px; }
+    .btn-secondary { background: #22c55e; } .btn-secondary:hover { background: #16a34a; }
+    .btn-danger { background: #ef4444; } .btn-danger:hover { background: #dc2626; }
+    .btn-action { background: #0284c7; color: white; border: none; padding: 6px 12px; font-size: 0.85rem; border-radius: 4px; cursor: pointer; }
+    .btn-action:hover { background: #0369a1; }
+    .chart-container { background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 25px; }
+    .swot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    @media (max-width: 600px) { .swot-grid { grid-template-columns: 1fr; } }
+    .swot-card { padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .swot-card.strength { background-color: #f0fdf4; border-color: #bbf7d0; }
+    .swot-card.strength h4 { color: #166534; margin-top: 0; }
+    .swot-card.weakness { background-color: #fef2f2; border-color: #fecaca; }
+    .swot-card.weakness h4 { color: #991b1b; margin-top: 0; }
+    .auto-textarea { width: 100%; min-height: 80px; padding: 8px; font-family: 'Sarabun', sans-serif; font-size: 0.9rem; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; background: #fff; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 25px; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; }
+    th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 0.95rem; vertical-align: middle; }
+    th { background: #007acc; color: white; font-weight: 600; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background-color: #f8fafc; }
+    .badge-score { background-color: #e0f2fe; color: #0369a1; font-weight: bold; padding: 3px 8px; border-radius: 12px; }
+    .badge-exp { background-color: #f1f5f9; color: #475569; font-weight: 600; padding: 3px 8px; border-radius: 6px; border: 1px solid #cbd5e1; display: inline-block; }
+    .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); overflow-y: auto; }
+    .modal-content { background-color: #fff; margin: 40px auto; padding: 30px; border-radius: 12px; max-width: 900px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); position: relative; }
+    .close-btn { position: absolute; right: 20px; top: 15px; font-size: 28px; font-weight: bold; color: #aaa; cursor: pointer; }
+    .close-btn:hover { color: #333; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 15px; }
+  </style>
+</head>
+<body>
+  <div id="dashboard">
+    <h2>🎯 แดชบอร์ดสรุปผลการประเมินภาพรวม (Final Day Evaluation)</h2>
+    
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="ค้นหาด้วยชื่อพนักงาน หรือ อีเมล">
+      <input type="date" id="dateInput">
+      <button id="searchBtn">ค้นหาข้อมูล</button>
+    </div>
+
+    <div class="btn-group">
+      <button id="downloadExcelBtn" class="btn-secondary">📥 ดาวน์โหลด Excel สรุปภาพรวม</button>
+    </div>
+
+    <div class="kpi-container">
+      <div class="kpi-card">
+        <div class="number" id="totalCandidates">0</div>
+        <div class="label">จำนวนพนักงานที่เข้าสอบทั้งหมด</div>
+      </div>
+      <div class="kpi-card">
+        <div class="number" id="totalTests">0</div>
+        <div class="label">ชุดข้อสอบที่ส่งเข้ามาทั้งหมด</div>
+      </div>
+      <div class="kpi-card">
+        <div class="number" id="avgScore">0%</div>
+        <div class="label">คะแนนเฉลี่ยรวมทุกหลักสูตร</div>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <canvas id="scoreChart" height="90"></canvas>
+    </div>
+
+    <h3>📋 ตารางสรุปผลการทดสอบรายบุคคล (รวมทั้ง 11 ชุดหลักสูตร)</h3>
+    <table id="matrixTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>ชื่อพนักงาน / อีเมล</th>
+          <th>ประสบการณ์</th>
+          <th>สถานะการผ่านหลักสูตร</th>
+          <th>จัดการ / รายงานรายบุคคล</th>
+        </tr>
+      </thead>
+      <tbody id="matrixTableBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Modal สำหรับดูใบรายงานผลรายบุคคลวันสุดท้าย -->
+  <div id="individualModal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeModal()">&times;</span>
+      <div class="modal-actions">
+        <button id="downloadIndividualPDFBtn" class="btn-danger">📄 ดาวน์โหลด PDF ใบสรุปผลรายบุคคล</button>
+      </div>
+      <div id="modalReportContent"></div>
+    </div>
+  </div>
+</body>
+</html>
