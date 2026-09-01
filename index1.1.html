@@ -59,6 +59,18 @@
       return null;
     }
 
+    // ฟังก์ชันคำนวณเกณฑ์ระดับเฉพาะชุดที่ 12
+    function getKnowledgeLevel(score, totalQ) {
+      const normalizedScore = totalQ === 60 ? score : Math.round((score / totalQ) * 60);
+      if (normalizedScore <= 39) {
+        return { name: "เริ่มต้น", bg: "#fff3cd", color: "#856404" };
+      } else if (normalizedScore >= 40 && normalizedScore <= 54) {
+        return { name: "มาตรฐาน", bg: "#d1ecf1", color: "#0c5460" };
+      } else {
+        return { name: "ผู้เชี่ยวชาญ", bg: "#d1ffd1", color: "#005900" };
+      }
+    }
+
     async function fetchData() {
       const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
       const dateFilter = document.getElementById("dateInput").value.trim();
@@ -121,16 +133,39 @@
           const modKey = matchModuleKey(r.quiz_set);
           if (modKey) {
             const totalQ = r.total_questions || 10;
-            const pct = Math.round(((r.score || 0) / totalQ) * 100);
+            const score = r.score || 0;
+            const pct = Math.round((score / totalQ) * 100);
             
-            if (!globalCandidateMap[key].quizScores[modKey] || pct > globalCandidateMap[key].quizScores[modKey].pct) {
-              globalCandidateMap[key].quizScores[modKey] = {
-                score: r.score,
+            let evaluationData = {};
+
+            if (modKey === "ความรู้เกี่ยวกับประกันชีวิต") {
+              // ชุดที่ 12 ใช้เกณฑ์ 3 ระดับ
+              const levelInfo = getKnowledgeLevel(score, totalQ);
+              evaluationData = {
+                score: score,
                 total: totalQ,
                 pct: pct,
-                passed: pct >= 80,
+                isSpecial: true,
+                level: levelInfo,
                 date: r.created_at
               };
+            } else {
+              // ชุดที่ 1-11 ใช้เกณฑ์เดิม (ผ่าน >= 80%)
+              const passed = pct >= 80;
+              evaluationData = {
+                score: score,
+                total: totalQ,
+                pct: pct,
+                isSpecial: false,
+                passed: passed,
+                bg: passed ? "#d1ffd1" : "#ffd1d1",
+                color: passed ? "#005900" : "#900",
+                date: r.created_at
+              };
+            }
+            
+            if (!globalCandidateMap[key].quizScores[modKey] || pct > globalCandidateMap[key].quizScores[modKey].pct) {
+              globalCandidateMap[key].quizScores[modKey] = evaluationData;
             }
           }
         });
@@ -209,7 +244,7 @@
           <th class="col-sticky-3">ประสบการณ์</th>
       `;
       MODULE_LIST.forEach(m => {
-        headerHTML += `<th style="text-align:center; font-size:0.85rem; min-width:110px;">${m.label}</th>`;
+        headerHTML += `<th style="text-align:center; font-size:0.85rem; min-width:120px;">${m.label}</th>`;
       });
       headerHTML += `
           <th style="text-align:center; min-width:90px;">อัตนัย</th>
@@ -235,16 +270,26 @@
         MODULE_LIST.forEach(m => {
           const testData = c.quizScores[m.key];
           if (testData) {
-            const bg = testData.passed ? "#d1ffd1" : "#ffd1d1";
-            const color = testData.passed ? "#005900" : "#900";
-            rowHTML += `
-              <td style="text-align:center;">
-                <span style="background:${bg}; color:${color}; padding:4px 8px; border-radius:6px; font-weight:bold; font-size:0.85rem; display:inline-block;">
-                  ${testData.pct}%
-                </span>
-                <br><small style="color:#555;">(${testData.score}/${testData.total})</small>
-              </td>
-            `;
+            if (testData.isSpecial) {
+              rowHTML += `
+                <td style="text-align:center;">
+                  <span style="background:${testData.level.bg}; color:${testData.level.color}; padding:3px 6px; border-radius:4px; font-weight:bold; font-size:0.75rem; display:inline-block;">
+                    ${testData.level.name}
+                  </span>
+                  <br><strong style="font-size:0.85rem;">${testData.pct}%</strong>
+                  <br><small style="color:#555;">(${testData.score}/${testData.total})</small>
+                </td>
+              `;
+            } else {
+              rowHTML += `
+                <td style="text-align:center;">
+                  <span style="background:${testData.bg}; color:${testData.color}; padding:4px 8px; border-radius:6px; font-weight:bold; font-size:0.85rem; display:inline-block;">
+                    ${testData.pct}%
+                  </span>
+                  <br><small style="color:#555;">(${testData.score}/${testData.total})</small>
+                </td>
+              `;
+            }
           } else {
             rowHTML += `<td style="text-align:center; color:#cbd5e1;">-</td>`;
           }
@@ -261,7 +306,6 @@
         row.innerHTML = rowHTML;
         tbody.appendChild(row);
 
-        // ผูก Event Click ป้องกันปัญหา stringify object ซ้อนทับใน HTML attribute
         setTimeout(() => {
           const btn = document.getElementById(`btn-report-${i}`);
           if (btn) {
@@ -297,9 +341,14 @@
         MODULE_LIST.forEach(m => {
           const data = c.quizScores[m.key];
           if (data) {
-            const badge = data.passed 
-              ? `<span style="color:#005900; background:#d1ffd1; padding:2px 6px; border-radius:4px; font-weight:bold;">ผ่าน (>=80%)</span>`
-              : `<span style="color:#900; background:#ffd1d1; padding:2px 6px; border-radius:4px; font-weight:bold;">ไม่ผ่าน</span>`;
+            let badge = "";
+            if (data.isSpecial) {
+              badge = `<span style="color:${data.level.color}; background:${data.level.bg}; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:0.75rem;">${data.level.name}</span>`;
+            } else {
+              badge = data.passed 
+                ? `<span style="color:#005900; background:#d1ffd1; padding:2px 6px; border-radius:4px; font-weight:bold;">ผ่าน (>=80%)</span>`
+                : `<span style="color:#900; background:#ffd1d1; padding:2px 6px; border-radius:4px; font-weight:bold;">ไม่ผ่าน</span>`;
+            }
             quizRows += `
               <tr>
                 <td style="padding:4px 6px; border-bottom:1px solid #eee;">${m.label}</td>
@@ -375,7 +424,7 @@
                 <th style="padding:5px 6px; text-align:left; font-size:0.8rem;">ชื่อชุดแบบทดสอบ</th>
                 <th style="padding:5px 6px; text-align:center; font-size:0.8rem;">คะแนน</th>
                 <th style="padding:5px 6px; text-align:center; font-size:0.8rem;">ร้อยละ</th>
-                <th style="padding:5px 6px; text-align:center; font-size:0.8rem;">สถานะ</th>
+                <th style="padding:5px 6px; text-align:center; font-size:0.8rem;">สถานะ / ระดับ</th>
               </tr>
             </thead>
             <tbody>${quizRows}</tbody>
@@ -388,7 +437,6 @@
 
       document.getElementById("individualModal").style.display = "block";
 
-      // ผูก Event ให้ปุ่ม AI Analysis
       const aiBtn = document.getElementById("aiAnalyzeBtn");
       if (aiBtn) {
         aiBtn.onclick = async function() {
@@ -425,36 +473,6 @@
       btn.disabled = true;
       btn.innerText = "⏳ กำลังสร้าง PDF...";
 
-      const strengthsVal = document.getElementById("inputStrengths").value.trim();
-      const weaknessesVal = document.getElementById("inputWeaknesses").value.trim();
-      const recsVal = document.getElementById("inputRecommendations").value.trim();
-
-      const strengthsList = strengthsVal ? strengthsVal.split('\n').filter(s => s.trim() !== '').map(s => `<li>${s.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
-      const weaknessesList = weaknessesVal ? weaknessesVal.split('\n').filter(w => w.trim() !== '').map(w => `<li>${w.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
-      const recsList = recsVal ? recsVal.split('\n').filter(r => r.trim() !== '').map(r => `<li>${r.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
-
-      const element = document.getElementById("printableCard").cloneNode(true);
-      const aiBtn = element.querySelector('#aiAnalyzeBtn');
-      if (aiBtn) aiBtn.remove();
-
-      element.querySelector('.swot-card.strength').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:15px; font-size:0.75rem; line-height: 1.2;">${strengthsList}</ul>`;
-      element.querySelector('.swot-card.weakness').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:15px; font-size:0.75rem; line-height: 1.2;">${weaknessesList}</ul>`;
-      element.querySelector('.swot-card.recommendation').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:15px; font-size:0.75rem; line-height: 1.2;">${recsList}</ul>`;
-
-      const opt = {
-        margin:       [0.15, 0.15, 0.15, 0.15],
-        filename:     `รายงานรอบด้าน_${name}.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, letterRendering: true },
-        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait', compress: true }
-      };
-
-    function downloadPDFReport(name) {
-      const btn = document.getElementById("downloadIndividualPDFBtn");
-      btn.disabled = true;
-      btn.innerText = "⏳ กำลังสร้าง PDF...";
-
-      // 1. ดึงค่าจาก textarea ต้นฉบับโดยตรง เพื่อป้องกันข้อมูลหายจากการโคลนโหนด
       const strengthsVal = document.getElementById("inputStrengths")?.value.trim() || "";
       const weaknessesVal = document.getElementById("inputWeaknesses")?.value.trim() || "";
       const recsVal = document.getElementById("inputRecommendations")?.value.trim() || "";
@@ -471,7 +489,6 @@
       const weaknessesList = formatToList(weaknessesVal);
       const recsList = formatToList(recsVal);
 
-      // 2. ตรวจสอบว่ามี element รายงานหรือไม่
       const originalCard = document.getElementById("printableCard");
       if (!originalCard) {
         alert("ไม่พบข้อมูลรายงานสำหรับพิมพ์");
@@ -481,12 +498,9 @@
       }
 
       const element = originalCard.cloneNode(true);
-      
-      // ซ่อนปุ่ม AI Analysis ที่ไม่ต้องการให้ติดไปใน PDF
       const aiBtn = element.querySelector('#aiAnalyzeBtn');
       if (aiBtn) aiBtn.remove();
 
-      // 3. แทนที่ textarea ด้วยรายการ <ul> ในโหนดสำเพ็ง (Cloned Element)
       const strengthCard = element.querySelector('.swot-card.strength');
       if (strengthCard) {
         const ta = strengthCard.querySelector('textarea');
@@ -505,7 +519,6 @@
         if (ta) ta.outerHTML = `<ul style="margin:0; padding-left:15px; font-size:0.75rem; line-height: 1.2;">${recsList}</ul>`;
       }
 
-      // 4. นำ element ชั่วคราวไปแปะไว้นอกจอ เพื่อให้ html2canvas คำนวณความกว้างและสไตล์ได้ถูกต้อง 100%
       element.style.position = 'absolute';
       element.style.left = '-9999px';
       element.style.top = '0';
@@ -601,7 +614,13 @@
 
         MODULE_LIST.forEach(m => {
           const testData = c.quizScores[m.key];
-          rowObj[m.label] = testData ? `${testData.pct}% (${testData.score}/${testData.total})` : "-";
+          if (testData) {
+            rowObj[m.label] = testData.isSpecial 
+              ? `${testData.level.name} (${testData.pct}%, ${testData.score}/${testData.total})` 
+              : `${testData.passed ? 'ผ่าน' : 'ไม่ผ่าน'} (${testData.pct}%, ${testData.score}/${testData.total})`;
+          } else {
+            rowObj[m.label] = "-";
+          }
         });
 
         rowObj["จุดแข็ง (AI Strengths)"] = document.getElementById("inputStrengths")?.value || "-";
