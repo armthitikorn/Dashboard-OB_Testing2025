@@ -468,69 +468,8 @@
 
     window.closeModal = closeModal;
 
-    function downloadPDFReport(name) {
-      const btn = document.getElementById("downloadIndividualPDFBtn");
-      btn.disabled = true;
-      btn.innerText = "⏳ กำลังสร้าง PDF...";
 
-      const strengthsVal = document.getElementById("inputStrengths")?.value.trim() || "";
-      const weaknessesVal = document.getElementById("inputWeaknesses")?.value.trim() || "";
-      const recsVal = document.getElementById("inputRecommendations")?.value.trim() || "";
-
-      const formatToList = (text) => {
-        if (!text) return '<li>-</li>';
-        return text.split('\n')
-          .filter(item => item.trim() !== '')
-          .map(item => `<li>${item.replace(/^[•\-\*]\s*/, '')}</li>`)
-          .join('');
-      };
-
-      const strengthsList = formatToList(strengthsVal);
-      const weaknessesList = formatToList(weaknessesVal);
-      const recsList = formatToList(recsVal);
-
-      const originalCard = document.getElementById("printableCard");
-      if (!originalCard) {
-        alert("ไม่พบข้อมูลรายงานสำหรับพิมพ์");
-        btn.disabled = false;
-        btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
-        return;
-      }
-
-      const element = originalCard.cloneNode(true);
-      const aiBtn = element.querySelector('#aiAnalyzeBtn');
-      if (aiBtn) aiBtn.remove();
-
-      const strengthCard = element.querySelector('.swot-card.strength');
-      if (strengthCard) {
-        const ta = strengthCard.querySelector('textarea');
-        if (ta) ta.outerHTML = `<ul style="margin:0; padding-left:15px; font-size:0.75rem; line-height: 1.2;">${strengthsList}</ul>`;
-      }
-
-      const weaknessCard = element.querySelector('.swot-card.weakness');
-      if (weaknessCard) {
-        const ta = weaknessCard.querySelector('textarea');
-        if (ta) ta.outerHTML = `<ul style="margin:0; padding-left:15px; font-size:0.75rem; line-height: 1.2;">${weaknessesList}</ul>`;
-      }
-
-      const recCard = element.querySelector('.swot-card.recommendation');
-      if (recCard) {
-        const ta = recCard.querySelector('textarea');
-        if (ta) ta.outerHTML = `<ul style="margin:0; padding-left:15px; font-size:0.75rem; line-height: 1.2;">${recsList}</ul>`;
-      }
-
-      element.style.position = 'absolute';
-      element.style.left = '-9999px';
-      element.style.top = '0';
-      element.style.width = '750px';
-      document.body.appendChild(element);
-
-      const opt = {
-        margin:       [0.15, 0.15, 0.15, 0.15],
-        filename:     `รายงานรอบด้าน_${name}.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, letterRendering: true },
-    function downloadPDFReport(name) {
+        function downloadPDFReport(name) {
       const btn = document.getElementById("downloadIndividualPDFBtn");
       btn.disabled = true;
       btn.innerText = "⏳ กำลังสร้าง PDF...";
