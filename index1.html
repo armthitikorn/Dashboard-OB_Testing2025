@@ -86,6 +86,16 @@
             finalName = emailKey;
           }
 
+          // 📌 ดึงข้อมูลแผนก (Department) แทนอีเมล
+          let finalDept = 'ไม่ระบุแผนก';
+          if (r.department && r.department.trim() !== '') {
+            finalDept = r.department;
+          } else if (r.dept && r.dept.trim() !== '') {
+            finalDept = r.dept;
+          } else if (matchedUser && (matchedUser.department || matchedUser.dept)) {
+            finalDept = matchedUser.department || matchedUser.dept;
+          }
+
           let finalExp = 'ไม่ระบุ';
           if (r.experience !== null && r.experience !== undefined && r.experience !== '') {
             finalExp = String(r.experience);
@@ -93,7 +103,7 @@
             finalExp = String(matchedUser.experience);
           }
 
-          return { name: finalName, experience: finalExp, email: emailKey || 'N/A' };
+          return { name: finalName, department: finalDept, experience: finalExp, email: emailKey || 'N/A' };
         };
 
         globalCandidateMap = {};
@@ -103,7 +113,7 @@
           if (dateFilter && createdDate !== dateFilter) return;
 
           const userInfo = resolveUser(r);
-          if (keyword && !userInfo.name.toLowerCase().includes(keyword) && !userInfo.email.toLowerCase().includes(keyword) && !userInfo.experience.toLowerCase().includes(keyword)) {
+          if (keyword && !userInfo.name.toLowerCase().includes(keyword) && !userInfo.department.toLowerCase().includes(keyword) && !userInfo.experience.toLowerCase().includes(keyword)) {
             return;
           }
 
@@ -111,6 +121,7 @@
           if (!globalCandidateMap[key]) {
             globalCandidateMap[key] = {
               name: userInfo.name,
+              department: userInfo.department,
               experience: userInfo.experience,
               email: userInfo.email,
               quizScores: {},
@@ -140,7 +151,7 @@
           if (dateFilter && createdDate !== dateFilter) return;
 
           const userInfo = resolveUser(r);
-          if (keyword && !userInfo.name.toLowerCase().includes(keyword) && !userInfo.email.toLowerCase().includes(keyword) && !userInfo.experience.toLowerCase().includes(keyword)) {
+          if (keyword && !userInfo.name.toLowerCase().includes(keyword) && !userInfo.department.toLowerCase().includes(keyword) && !userInfo.experience.toLowerCase().includes(keyword)) {
             return;
           }
 
@@ -148,6 +159,7 @@
           if (!globalCandidateMap[key]) {
             globalCandidateMap[key] = {
               name: userInfo.name,
+              department: userInfo.department,
               experience: userInfo.experience,
               email: userInfo.email,
               quizScores: {},
@@ -206,7 +218,8 @@
         <tr>
           <th class="col-sticky-1">#</th>
           <th class="col-sticky-2">ชื่อพนักงาน</th>
-          <th class="col-sticky-3">ประสบการณ์</th>
+          <th class="col-sticky-3">แผนก</th>
+          <th class="col-sticky-4">ประสบการณ์</th>
       `;
       MODULE_LIST.forEach(m => {
         headerHTML += `<th style="text-align:center; font-size:0.85rem; min-width:110px;">${m.label}</th>`;
@@ -219,7 +232,7 @@
       thead.innerHTML = headerHTML;
 
       if (candidates.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="${MODULE_LIST.length + 5}" style="text-align:center; color:#888;">ไม่พบข้อมูลพนักงานตามเงื่อนไข</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${MODULE_LIST.length + 6}" style="text-align:center; color:#888;">ไม่พบข้อมูลพนักงานตามเงื่อนไข</td></tr>`;
         return;
       }
 
@@ -228,8 +241,9 @@
         
         let rowHTML = `
           <td class="col-sticky-1">${i + 1}</td>
-          <td class="col-sticky-2"><strong>${c.name}</strong><br><small style="color:#64748b;">${c.email}</small></td>
-          <td class="col-sticky-3"><span class="badge-exp">${c.experience}</span></td>
+          <td class="col-sticky-2"><strong>${c.name}</strong></td>
+          <td class="col-sticky-3"><span style="color:#0284c7; font-weight:500;">${c.department}</span></td>
+          <td class="col-sticky-4"><span class="badge-exp">${c.experience}</span></td>
         `;
 
         MODULE_LIST.forEach(m => {
@@ -327,9 +341,9 @@
           <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom: 2px solid #007acc; padding-bottom: 15px; margin-bottom: 20px;">
             <div>
               <h2 style="color:#007acc; margin:0; font-size:22px;">📊 รายงานผลการประเมินรายบุคคล & AI Analytics</h2>
-              <p style="margin:5px 0 0 0; color:#64748b; font-size:13px;">พนักงาน: ${c.name} | อีเมล: ${c.email} | วันที่ออกรายงาน: ${new Date().toLocaleDateString('th-TH')}</p>
+              <p style="margin:5px 0 0 0; color:#64748b; font-size:13px;">พนักงาน: ${c.name} | แผนก: ${c.department} | วันที่ออกรายงาน: ${new Date().toLocaleDateString('th-TH')}</p>
               <div style="margin-top:8px;">
-                <span class="badge-exp">ประสบการณ์: ${c.experience}</span>
+                <span class="badge-exp">ประสบการณ์ในหน้าที่: ${c.experience}</span>
               </div>
             </div>
             <div style="width: 100px; height: 120px; border: 2px dashed #cbd5e1; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f8fafc; color: #94a3b8; font-size: 11px; text-align: center; padding: 5px; flex-shrink: 0;" title="ช่องสำหรับติดรูปถ่ายพนักงาน">
@@ -420,7 +434,16 @@
       const weaknessesList = weaknessesVal ? weaknessesVal.split('\n').filter(w => w.trim() !== '').map(w => `<li>${w.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
       const recsList = recsVal ? recsVal.split('\n').filter(r => r.trim() !== '').map(r => `<li>${r.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
 
-      const element = document.getElementById("printableCard").cloneNode(true);
+      // 📌 แก้ปัญหาหน้าว่างโดยดึงโคลน DOM Element ตัวหลักมาแปลงเป็น PDF โดยตรง
+      const originalElement = document.getElementById("printableCard");
+      if (!originalElement) {
+        alert("ไม่พบข้อมูลสำหรับพิมพ์รายงาน");
+        btn.disabled = false;
+        btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
+        return;
+      }
+
+      const element = originalElement.cloneNode(true);
       const aiBtn = element.querySelector('#aiAnalyzeBtn');
       if (aiBtn) aiBtn.remove();
 
@@ -432,7 +455,7 @@
         margin: [0.3, 0.3, 0.3, 0.3],
         filename: `รายงานรอบด้าน_${name}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
+        html2canvas: { scale: 2, useCORS: true, logging: true },
         jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
       };
 
@@ -441,6 +464,7 @@
         btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
       }).catch(err => {
         console.error("PDF Export Error:", err);
+        alert("เกิดข้อผิดพลาดในการดาวน์โหลด PDF");
         btn.disabled = false;
         btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
       });
@@ -505,8 +529,8 @@
         const rowObj = {
           "ลำดับ": index + 1,
           "ชื่อ-นามสกุล": c.name,
-          "อีเมล": c.email,
-          "ประสบการณ์": c.experience,
+          "แผนก": c.department,
+          "ประสบการณ์ในหน้าที่": c.experience,
           "จำนวนชุดอัตนัยที่ส่ง": c.subjectiveTests.length
         };
 
@@ -598,7 +622,7 @@
       z-index: 10 !important; 
     }
 
-    /* 📌 ตรึงคอลัมน์ซ้ายสุด (ลำดับ, ชื่อพนักงาน, ประสบการณ์) แบบกำหนดระยะห่างถูกต้อง */
+    /* 📌 ตรึงคอลัมน์ซ้ายสุด (1. ลำดับ, 2. ชื่อพนักงาน, 3. แผนก, 4. ประสบการณ์) แบบกำหนดระยะห่างถูกต้อง */
     .col-sticky-1 {
       position: sticky !important;
       left: 0 !important;
@@ -612,11 +636,18 @@
       left: 45px !important; /* เกาะต่อจากคอลัมน์ # */
       z-index: 5 !important;
       background-color: #f8fafc !important;
-      min-width: 190px !important;
+      min-width: 180px !important;
     }
     .col-sticky-3 {
       position: sticky !important;
-      left: 235px !important; /* เกาะต่อจากคอลัมน์ # และ ชื่อพนักงาน (45 + 190) */
+      left: 225px !important; /* เกาะต่อจากคอลัมน์ # และ ชื่อพนักงาน (45 + 180) */
+      z-index: 5 !important;
+      background-color: #f8fafc !important;
+      min-width: 140px !important;
+    }
+    .col-sticky-4 {
+      position: sticky !important;
+      left: 365px !important; /* เกาะต่อจากคอลัมน์แผนก (225 + 140) */
       z-index: 5 !important;
       background-color: #f8fafc !important;
       min-width: 110px !important;
@@ -627,6 +658,7 @@
     th.col-sticky-1 { z-index: 20 !important; background-color: #007acc !important; }
     th.col-sticky-2 { z-index: 20 !important; background-color: #007acc !important; }
     th.col-sticky-3 { z-index: 20 !important; background-color: #007acc !important; }
+    th.col-sticky-4 { z-index: 20 !important; background-color: #007acc !important; }
 
     tr:hover td { background-color: #f1f5f9 !important; }
 
@@ -656,7 +688,7 @@
     <h2>🎯 แดชบอร์ดสรุปผลการประเมินรายวิชาแบบเมทริกซ์ (Matrix Evaluation 11 ชุด)</h2>
     
     <div class="search-box">
-      <input type="text" id="searchInput" placeholder="ค้นหาด้วยชื่อพนักงาน หรือ อีเมล">
+      <input type="text" id="searchInput" placeholder="ค้นหาด้วยชื่อพนักงาน, แผนก หรือประสบการณ์">
       <input type="date" id="dateInput">
       <button id="searchBtn">ค้นหาข้อมูล</button>
     </div>
