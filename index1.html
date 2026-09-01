@@ -254,12 +254,20 @@
         rowHTML += `
           <td style="text-align:center;"><span class="badge-score" style="background:#f3e8ff; color:#6b21a8;">ส่ง ${subjCount} ชุด</span></td>
           <td style="text-align:center;">
-            <button class="btn-action" onclick='openCandidateReport(${JSON.stringify(c)})'>🔍 รายงาน & AI</button>
+            <button class="btn-action" id="btn-report-${i}">🔍 รายงาน & AI</button>
           </td>
         `;
 
         row.innerHTML = rowHTML;
         tbody.appendChild(row);
+
+        // ผูก Event Click ป้องกันปัญหา stringify object ซ้อนทับใน HTML attribute
+        setTimeout(() => {
+          const btn = document.getElementById(`btn-report-${i}`);
+          if (btn) {
+            btn.addEventListener("click", () => openCandidateReport(c));
+          }
+        }, 0);
       });
     }
 
@@ -279,7 +287,7 @@
       }
     }
 
-    window.openCandidateReport = async function(c) {
+    function openCandidateReport(c) {
       const modalContent = document.getElementById("modalReportContent");
 
       let quizRows = "";
@@ -315,7 +323,7 @@
             ansList = answers.map((ansItem, qIdx) => {
               const qText = QUESTIONS_LIST[qIdx] || `คำถามข้อที่ ${qIdx + 1}`;
               const val = (typeof ansItem === 'object' && ansItem !== null) ? (ansItem.answer || ansItem.value || JSON.stringify(ansItem)) : ansItem;
-              return `<div style="margin-bottom:4px; font-size:0.8rem;"><strong style="color:#007acc;">${qText}</strong>ตอบ: <span style="color:#333;">${val || '-'}</span></div>`;
+              return `<div style="margin-bottom:4px; font-size:0.8rem;"><strong style="color:#007acc;">${qText}</strong> ตอบ: <span style="color:#333;">${val || '-'}</span></div>`;
             }).join("");
           }
           subjectiveHTML += `<div style="background:#f8fafc; border:1px solid #cbd5e1; padding:6px 8px; border-radius:4px; margin-bottom:6px;"><strong style="font-size:0.85rem; color:#1e293b;">ชุดที่ส่งครั้งที่ ${subIdx + 1} (${new Date(sub.date).toLocaleDateString('th-TH')})</strong><div style="margin-top:4px;">${ansList}</div></div>`;
@@ -340,7 +348,7 @@
 
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <h3 style="color:#2c3e50; font-size:13px; margin:0; border-left: 3px solid #007acc; padding-left: 6px;">🤖 ผลการวิเคราะห์เชิงลึกโดย AI</h3>
-            <button class="btn-action" id="aiAnalyzeBtn" style="background:#8b5cf6; padding:4px 8px; font-size:0.75rem;" onclick="triggerAIAnalysis()">🤖 ให้ AI วิเคราะห์เชิงลึก</button>
+            <button class="btn-action" id="aiAnalyzeBtn" style="background:#8b5cf6; padding:4px 8px; font-size:0.75rem;">🤖 ให้ AI วิเคราะห์เชิงลึก</button>
           </div>
 
           <div id="aiAnalysisContainer" style="margin-bottom:10px;">
@@ -380,32 +388,37 @@
 
       document.getElementById("individualModal").style.display = "block";
 
-      window.triggerAIAnalysis = async function() {
-        const btn = document.getElementById("aiAnalyzeBtn");
-        btn.disabled = true;
-        btn.innerText = "⏳ AI กำลังวิเคราะห์ข้อมูล...";
-        
-        const aiResult = await evaluateCandidateWithVercelAPI(c);
-        if (aiResult && aiResult.strengths) {
-          document.getElementById("inputStrengths").value = (aiResult.strengths || []).map(s => `• ${s}`).join('\n');
-          document.getElementById("inputWeaknesses").value = (aiResult.weaknesses || []).map(w => `• ${w}`).join('\n');
-          document.getElementById("inputRecommendations").value = (aiResult.recommendations || []).map(r => `• ${r}`).join('\n');
-          alert("AI วิเคราะห์ข้อมูลสำเร็จแล้วครับ!");
-        } else {
-          alert("เกิดข้อผิดพลาดในการเชื่อมต่อ AI Backend บน Vercel");
-        }
-        btn.disabled = false;
-        btn.innerText = "🤖 ให้ AI วิเคราะห์เชิงลึกอีกครั้ง";
-      };
+      // ผูก Event ให้ปุ่ม AI Analysis
+      const aiBtn = document.getElementById("aiAnalyzeBtn");
+      if (aiBtn) {
+        aiBtn.onclick = async function() {
+          aiBtn.disabled = true;
+          aiBtn.innerText = "⏳ AI กำลังวิเคราะห์ข้อมูล...";
+          
+          const aiResult = await evaluateCandidateWithVercelAPI(c);
+          if (aiResult && aiResult.strengths) {
+            document.getElementById("inputStrengths").value = (aiResult.strengths || []).map(s => `• ${s}`).join('\n');
+            document.getElementById("inputWeaknesses").value = (aiResult.weaknesses || []).map(w => `• ${w}`).join('\n');
+            document.getElementById("inputRecommendations").value = (aiResult.recommendations || []).map(r => `• ${r}`).join('\n');
+            alert("AI วิเคราะห์ข้อมูลสำเร็จแล้วครับ!");
+          } else {
+            alert("เกิดข้อผิดพลาดในการเชื่อมต่อ AI Backend บน Vercel");
+          }
+          aiBtn.disabled = false;
+          aiBtn.innerText = "🤖 ให้ AI วิเคราะห์เชิงลึกอีกครั้ง";
+        };
+      }
 
       document.getElementById("downloadIndividualPDFBtn").onclick = function() {
         downloadPDFReport(c.name);
       };
-    };
+    }
 
-    window.closeModal = function() {
+    function closeModal() {
       document.getElementById("individualModal").style.display = "none";
-    };
+    }
+
+    window.closeModal = closeModal;
 
     function downloadPDFReport(name) {
       const btn = document.getElementById("downloadIndividualPDFBtn");
@@ -428,7 +441,6 @@
       element.querySelector('.swot-card.weakness').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:15px; font-size:0.75rem; line-height: 1.2;">${weaknessesList}</ul>`;
       element.querySelector('.swot-card.recommendation').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:15px; font-size:0.75rem; line-height: 1.2;">${recsList}</ul>`;
 
-      // 📌 บีบอัดขนาดและตั้งค่าขนาดหน้ากระดาษ A4 แนวตั้งให้พอดี 1 หน้ากระดาษพอดี
       const opt = {
         margin:       [0.15, 0.15, 0.15, 0.15],
         filename:     `รายงานรอบด้าน_${name}.pdf`,
@@ -557,7 +569,6 @@
     .btn-action:hover { background: #0369a1; }
     .chart-container { background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 25px; }
     
-    /* 📌 ส่วนตาราง Matrix บังคับ Scrollbar และ Sticky ให้ทำงานอย่างเด็ดขาด */
     .table-responsive { 
       width: 100% !important; 
       max-height: 550px !important; 
@@ -588,7 +599,6 @@
     
     th:last-child, td:last-child { border-right: none !important; }
     
-    /* 📌 ตรึงหัวตาราง (Sticky Header) */
     th { 
       background: #007acc !important; 
       color: white !important; 
@@ -599,7 +609,6 @@
       z-index: 10 !important; 
     }
 
-    /* 📌 ตรึงคอลัมน์ซ้ายสุด (ลำดับ, ชื่อพนักงาน, ประสบการณ์) แบบกำหนดระยะห่างถูกต้อง */
     .col-sticky-1 {
       position: sticky !important;
       left: 0 !important;
@@ -610,21 +619,20 @@
     }
     .col-sticky-2 {
       position: sticky !important;
-      left: 45px !important; /* เกาะต่อจากคอลัมน์ # */
+      left: 45px !important;
       z-index: 5 !important;
       background-color: #f8fafc !important;
       min-width: 190px !important;
     }
     .col-sticky-3 {
       position: sticky !important;
-      left: 235px !important; /* เกาะต่อจากคอลัมน์ # และ ชื่อพนักงาน (45 + 190) */
+      left: 235px !important;
       z-index: 5 !important;
       background-color: #f8fafc !important;
       min-width: 110px !important;
       text-align: center !important;
     }
 
-    /* 📌 จุดตัดหัวตารางและคอลัมน์ซ้ายสุด ให้อยู่ชั้นบนสุดเสมอ */
     th.col-sticky-1 { z-index: 20 !important; background-color: #007acc !important; }
     th.col-sticky-2 { z-index: 20 !important; background-color: #007acc !important; }
     th.col-sticky-3 { z-index: 20 !important; background-color: #007acc !important; }
