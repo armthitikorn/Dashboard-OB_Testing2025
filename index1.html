@@ -294,10 +294,10 @@
               : `<span style="color:#900; background:#ffd1d1; padding:2px 6px; border-radius:4px; font-weight:bold;">ไม่ผ่าน</span>`;
             quizRows += `
               <tr>
-                <td style="padding:6px 8px; border-bottom:1px solid #eee;">${m.label}</td>
-                <td style="padding:6px 8px; border-bottom:1px solid #eee; text-align:center;">${data.score} / ${data.total}</td>
-                <td style="padding:6px 8px; border-bottom:1px solid #eee; text-align:center;"><strong>${data.pct}%</strong></td>
-                <td style="padding:6px 8px; border-bottom:1px solid #eee; text-align:center;">${badge}</td>
+                <td style="padding:4px 6px; border-bottom:1px solid #eee;">${m.label}</td>
+                <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:center;">${data.score} / ${data.total}</td>
+                <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:center;"><strong>${data.pct}%</strong></td>
+                <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:center;">${badge}</td>
               </tr>
             `;
           }
@@ -306,7 +306,7 @@
 
       let subjectiveHTML = "";
       if (c.subjectiveTests.length === 0) {
-        subjectiveHTML = `<p style="color:#888; font-style:italic;">ยังไม่มีประวัติการทำข้อสอบอัตนัย</p>`;
+        subjectiveHTML = `<p style="color:#888; font-style:italic; font-size:0.8rem;">ยังไม่มีประวัติการทำข้อสอบอัตนัย</p>`;
       } else {
         c.subjectiveTests.forEach((sub, subIdx) => {
           let ansList = "";
@@ -315,65 +315,65 @@
             ansList = answers.map((ansItem, qIdx) => {
               const qText = QUESTIONS_LIST[qIdx] || `คำถามข้อที่ ${qIdx + 1}`;
               const val = (typeof ansItem === 'object' && ansItem !== null) ? (ansItem.answer || ansItem.value || JSON.stringify(ansItem)) : ansItem;
-              return `<div style="margin-bottom:6px; font-size:0.85rem;"><strong style="color:#007acc;">${qText}</strong><br><span style="color:#333;">ตอบ: ${val || '-'}</span></div>`;
+              return `<div style="margin-bottom:4px; font-size:0.8rem;"><strong style="color:#007acc;">${qText}</strong>ตอบ: <span style="color:#333;">${val || '-'}</span></div>`;
             }).join("");
           }
-          subjectiveHTML += `<div style="background:#f8fafc; border:1px solid #cbd5e1; padding:10px; border-radius:6px; margin-bottom:8px;"><strong style="font-size:0.9rem; color:#1e293b;">ชุดที่ส่งครั้งที่ ${subIdx + 1} (${new Date(sub.date).toLocaleDateString('th-TH')})</strong><div style="margin-top:6px;">${ansList}</div></div>`;
+          subjectiveHTML += `<div style="background:#f8fafc; border:1px solid #cbd5e1; padding:6px 8px; border-radius:4px; margin-bottom:6px;"><strong style="font-size:0.85rem; color:#1e293b;">ชุดที่ส่งครั้งที่ ${subIdx + 1} (${new Date(sub.date).toLocaleDateString('th-TH')})</strong><div style="margin-top:4px;">${ansList}</div></div>`;
         });
       }
 
       modalContent.innerHTML = `
-        <div style="background:#ffffff; padding:25px; color:#333; font-family:'Sarabun', sans-serif;" id="printableCard">
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom: 2px solid #007acc; padding-bottom: 15px; margin-bottom: 20px;">
+        <div style="background:#ffffff; padding:15px; color:#333; font-family:'Sarabun', sans-serif;" id="printableCard">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom: 2px solid #007acc; padding-bottom: 8px; margin-bottom: 10px;">
             <div>
-              <h2 style="color:#007acc; margin:0; font-size:22px;">📊 รายงานผลการประเมินรายบุคคล & AI Analytics</h2>
-              <p style="margin:5px 0 0 0; color:#64748b; font-size:13px;">พนักงาน: ${c.name} | อีเมล: ${c.email} | วันที่ออกรายงาน: ${new Date().toLocaleDateString('th-TH')}</p>
-              <div style="margin-top:8px;">
-                <span class="badge-exp">ประสบการณ์: ${c.experience}</span>
+              <h2 style="color:#007acc; margin:0; font-size:18px;">📊 รายงานผลการประเมินรายบุคคล & AI Analytics</h2>
+              <p style="margin:3px 0 0 0; color:#64748b; font-size:11px;">พนักงาน: ${c.name} | อีเมล: ${c.email} | วันที่: ${new Date().toLocaleDateString('th-TH')}</p>
+              <div style="margin-top:4px;">
+                <span class="badge-exp" style="font-size:10px; padding:1px 6px;">ประสบการณ์: ${c.experience}</span>
               </div>
             </div>
-            <div style="width: 100px; height: 120px; border: 2px dashed #cbd5e1; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f8fafc; color: #94a3b8; font-size: 11px; text-align: center; padding: 5px; flex-shrink: 0;" title="ช่องสำหรับติดรูปถ่ายพนักงาน">
+            <div style="width: 70px; height: 85px; border: 2px dashed #cbd5e1; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f8fafc; color: #94a3b8; font-size: 9px; text-align: center; padding: 2px; flex-shrink: 0;" title="ช่องสำหรับติดรูปถ่ายพนักงาน">
               <span>📷</span>
-              <span style="margin-top:4px;">ติดรูปถ่ายพนักงาน</span>
+              <span style="margin-top:2px;">ติดรูปถ่าย</span>
             </div>
           </div>
 
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <h3 style="color:#2c3e50; font-size:16px; margin:0; border-left: 4px solid #007acc; padding-left: 8px;">🤖 ผลการวิเคราะห์เชิงลึกโดย AI</h3>
-            <button class="btn-action" id="aiAnalyzeBtn" style="background:#8b5cf6;" onclick="triggerAIAnalysis()">🤖 ให้ AI วิเคราะห์เชิงลึก</button>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <h3 style="color:#2c3e50; font-size:13px; margin:0; border-left: 3px solid #007acc; padding-left: 6px;">🤖 ผลการวิเคราะห์เชิงลึกโดย AI</h3>
+            <button class="btn-action" id="aiAnalyzeBtn" style="background:#8b5cf6; padding:4px 8px; font-size:0.75rem;" onclick="triggerAIAnalysis()">🤖 ให้ AI วิเคราะห์เชิงลึก</button>
           </div>
 
-          <div id="aiAnalysisContainer" style="margin-bottom:20px;">
-            <div class="swot-grid">
-              <div class="swot-card strength">
-                <h4>💪 จุดแข็ง (Strengths)</h4>
-                <textarea id="inputStrengths" class="auto-textarea" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
+          <div id="aiAnalysisContainer" style="margin-bottom:10px;">
+            <div class="swot-grid" style="gap: 8px;">
+              <div class="swot-card strength" style="padding: 8px;">
+                <h4 style="font-size: 0.85rem; margin-bottom: 4px;">💪 จุดแข็ง (Strengths)</h4>
+                <textarea id="inputStrengths" class="auto-textarea" style="min-height: 45px; font-size: 0.8rem;" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
               </div>
-              <div class="swot-card weakness">
-                <h4>⚠️ จุดที่ควรพัฒนา (Weaknesses)</h4>
-                <textarea id="inputWeaknesses" class="auto-textarea" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
+              <div class="swot-card weakness" style="padding: 8px;">
+                <h4 style="font-size: 0.85rem; margin-bottom: 4px;">⚠️ จุดที่ควรพัฒนา (Weaknesses)</h4>
+                <textarea id="inputWeaknesses" class="auto-textarea" style="min-height: 45px; font-size: 0.8rem;" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
               </div>
             </div>
-            <div class="swot-card recommendation" style="margin-top:12px;">
-              <h4>💡 แนวทางการโค้ชชิ่งเฉพาะบุคคล (Action Plan)</h4>
-              <textarea id="inputRecommendations" class="auto-textarea" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
+            <div class="swot-card recommendation" style="margin-top:6px; padding: 8px;">
+              <h4 style="font-size: 0.85rem; margin-bottom: 4px;">💡 แนวทางการโค้ชชิ่งเฉพาะบุคคล (Action Plan)</h4>
+              <textarea id="inputRecommendations" class="auto-textarea" style="min-height: 40px; font-size: 0.8rem;" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
             </div>
           </div>
 
-          <h3 style="color:#2c3e50; font-size:16px; margin-top:20px; margin-bottom:10px; border-left: 4px solid #007acc; padding-left: 8px;">📋 คะแนนสรุปแบบทดสอบปรนัย (รายวิชา 11 ชุด)</h3>
-          <table style="width:100%; border-collapse:collapse; margin-bottom:20px; font-size:0.9rem;">
+          <h3 style="color:#2c3e50; font-size:13px; margin-top:10px; margin-bottom:6px; border-left: 3px solid #007acc; padding-left: 6px;">📋 คะแนนสรุปแบบทดสอบปรนัย (รายวิชา 11 ชุด)</h3>
+          <table style="width:100%; border-collapse:collapse; margin-bottom:10px; font-size:0.8rem;">
             <thead>
               <tr style="background:#007acc; color:white;">
-                <th style="padding:8px; text-align:left;">ชื่อชุดแบบทดสอบ</th>
-                <th style="padding:8px; text-align:center;">คะแนน</th>
-                <th style="padding:8px; text-align:center;">ร้อยละ</th>
-                <th style="padding:8px; text-align:center;">สถานะ</th>
+                <th style="padding:5px 6px; text-align:left; font-size:0.8rem;">ชื่อชุดแบบทดสอบ</th>
+                <th style="padding:5px 6px; text-align:center; font-size:0.8rem;">คะแนน</th>
+                <th style="padding:5px 6px; text-align:center; font-size:0.8rem;">ร้อยละ</th>
+                <th style="padding:5px 6px; text-align:center; font-size:0.8rem;">สถานะ</th>
               </tr>
             </thead>
             <tbody>${quizRows}</tbody>
           </table>
 
-          <h3 style="color:#2c3e50; font-size:16px; margin-top:20px; margin-bottom:10px; border-left: 4px solid #007acc; padding-left: 8px;">✍️ รายละเอียดข้อสอบอัตนัยและคำตอบของพนักงาน</h3>
+          <h3 style="color:#2c3e50; font-size:13px; margin-top:10px; margin-bottom:6px; border-left: 3px solid #007acc; padding-left: 6px;">✍️ รายละเอียดข้อสอบอัตนัยและคำตอบของพนักงาน</h3>
           ${subjectiveHTML}
         </div>
       `;
@@ -383,7 +383,7 @@
       window.triggerAIAnalysis = async function() {
         const btn = document.getElementById("aiAnalyzeBtn");
         btn.disabled = true;
-        btn.innerText = "⏳ AI กำลังวิเคราะห์ข้อมูลผ่าน Vercel...";
+        btn.innerText = "⏳ AI กำลังวิเคราะห์ข้อมูล...";
         
         const aiResult = await evaluateCandidateWithVercelAPI(c);
         if (aiResult && aiResult.strengths) {
@@ -424,16 +424,17 @@
       const aiBtn = element.querySelector('#aiAnalyzeBtn');
       if (aiBtn) aiBtn.remove();
 
-      element.querySelector('.swot-card.strength').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${strengthsList}</ul>`;
-      element.querySelector('.swot-card.weakness').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${weaknessesList}</ul>`;
-      element.querySelector('.swot-card.recommendation').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${recsList}</ul>`;
+      element.querySelector('.swot-card.strength').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:15px; font-size:0.75rem; line-height: 1.2;">${strengthsList}</ul>`;
+      element.querySelector('.swot-card.weakness').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:15px; font-size:0.75rem; line-height: 1.2;">${weaknessesList}</ul>`;
+      element.querySelector('.swot-card.recommendation').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:15px; font-size:0.75rem; line-height: 1.2;">${recsList}</ul>`;
 
+      // 📌 บีบอัดขนาดและตั้งค่าขนาดหน้ากระดาษ A4 แนวตั้งให้พอดี 1 หน้ากระดาษพอดี
       const opt = {
-        margin: [0.3, 0.3, 0.3, 0.3],
-        filename: `รายงานรอบด้าน_${name}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+        margin:       [0.15, 0.15, 0.15, 0.15],
+        filename:     `รายงานรอบด้าน_${name}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, letterRendering: true },
+        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait', compress: true }
       };
 
       html2pdf().set(opt).from(element).save().then(() => {
