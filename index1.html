@@ -33,7 +33,8 @@
       { key: "FATCA", label: "FATCA & CRS" },
       { key: "QC Matrix", label: "QC Matrix" },
       { key: "Salesforce", label: "Salesforce" },
-      { key: "ความรู้เกี่ยวกับประกันชีวิต", label: "ความรู้เกี่ยวกับประกันชีวิต" }
+      { key: "ความรู้เกี่ยวกับประกันชีวิต", label: "ความรู้เกี่ยวกับประกันชีวิต" },
+      { key: "ความกังวลของลูกค้า", label: "ความกังวลของลูกค้า" }
     ];
 
     const QUESTIONS_LIST = [
@@ -57,18 +58,6 @@
         if (quizSetName.includes(m.key)) return m.key;
       }
       return null;
-    }
-
-    // ฟังก์ชันคำนวณเกณฑ์ระดับเฉพาะชุดที่ 12
-    function getKnowledgeLevel(score, totalQ) {
-      const normalizedScore = totalQ === 60 ? score : Math.round((score / totalQ) * 60);
-      if (normalizedScore <= 39) {
-        return { name: "เริ่มต้น", bg: "#fff3cd", color: "#856404" };
-      } else if (normalizedScore >= 40 && normalizedScore <= 54) {
-        return { name: "มาตรฐาน", bg: "#d1ecf1", color: "#0c5460" };
-      } else {
-        return { name: "ผู้เชี่ยวชาญ", bg: "#d1ffd1", color: "#005900" };
-      }
     }
 
     async function fetchData() {
@@ -98,6 +87,16 @@
             finalName = emailKey;
           }
 
+          // 📌 ดึงข้อมูลแผนก (Department) อย่างแม่นยำ
+          let finalDept = 'ไม่ระบุแผนก';
+          if (matchedUser && (matchedUser.department || matchedUser.dept)) {
+            finalDept = matchedUser.department || matchedUser.dept;
+          } else if (r.department && r.department.trim() !== '') {
+            finalDept = r.department;
+          } else if (r.dept && r.dept.trim() !== '') {
+            finalDept = r.dept;
+          }
+
           let finalExp = 'ไม่ระบุ';
           if (r.experience !== null && r.experience !== undefined && r.experience !== '') {
             finalExp = String(r.experience);
@@ -105,17 +104,52 @@
             finalExp = String(matchedUser.experience);
           }
 
-          return { name: finalName, experience: finalExp, email: emailKey || 'N/A' };
+          // 📌 ดึงเวลาเข้าสู่ระบบ (login_time)
+          let finalLoginTime = '-';
+          if (matchedUser && matchedUser.login_time) {
+            finalLoginTime = matchedUser.login_time;
+          } else if (r.login_time) {
+            finalLoginTime = r.login_time;
+          } else if (r.created_at) {
+            finalLoginTime = r.created_at;
+          }
+
+          return { 
+            name: finalName, 
+            department: finalDept, 
+            experience: finalExp, 
+            email: emailKey || 'N/A',
+            loginTime: finalLoginTime 
+          };
         };
 
         globalCandidateMap = {};
 
+        // 1. นำข้อมูลจากตาราง users มาตั้งต้นก่อน เพื่อให้ได้รายชื่อและแผนกที่ลงทะเบียนไว้ครบถ้วน
+        (users || []).forEach(u => {
+          const name = u.full_name || u.email || 'ไม่ระบุชื่อ';
+          const emailKey = (u.email || '').toLowerCase().trim();
+          
+          if (keyword && !name.toLowerCase().includes(keyword) && !(u.department || '').toLowerCase().includes(keyword)) return;
+
+          globalCandidateMap[name] = {
+            name: name,
+            department: u.department || u.dept || 'ไม่ระบุแผนก',
+            experience: u.experience || 'ไม่ระบุ',
+            email: emailKey,
+            loginTime: u.login_time || '-',
+            quizScores: {},
+            subjectiveTests: []
+          };
+        });
+
+        // 2. เติมข้อมูลผลสอบปรนัย (quiz_results)
         (quizResults || []).forEach(r => {
           const createdDate = r.created_at ? r.created_at.split('T')[0] : '';
           if (dateFilter && createdDate !== dateFilter) return;
 
           const userInfo = resolveUser(r);
-          if (keyword && !userInfo.name.toLowerCase().includes(keyword) && !userInfo.email.toLowerCase().includes(keyword) && !userInfo.experience.toLowerCase().includes(keyword)) {
+          if (keyword && !userInfo.name.toLowerCase().includes(keyword) && !userInfo.department.toLowerCase().includes(keyword) && !userInfo.experience.toLowerCase().includes(keyword)) {
             return;
           }
 
@@ -123,59 +157,47 @@
           if (!globalCandidateMap[key]) {
             globalCandidateMap[key] = {
               name: userInfo.name,
+              department: userInfo.department,
               experience: userInfo.experience,
               email: userInfo.email,
+              loginTime: userInfo.loginTime,
               quizScores: {},
               subjectiveTests: []
             };
+          } else {
+            // ถ้าในตาราง users ไม่มีแผนกหรือเวลา แต่ใน quiz_results มี ให้ดึงมาเติม
+            if (globalCandidateMap[key].department === 'ไม่ระบุแผนก' && userInfo.department !== 'ไม่ระบุแผนก') {
+              globalCandidateMap[key].department = userInfo.department;
+            }
+            if (userInfo.loginTime !== '-' && globalCandidateMap[key].loginTime === '-') {
+              globalCandidateMap[key].loginTime = userInfo.loginTime;
+            }
           }
 
           const modKey = matchModuleKey(r.quiz_set);
           if (modKey) {
             const totalQ = r.total_questions || 10;
-            const score = r.score || 0;
-            const pct = Math.round((score / totalQ) * 100);
-            
-            let evaluationData = {};
-
-            if (modKey === "ความรู้เกี่ยวกับประกันชีวิต") {
-              // ชุดที่ 12 ใช้เกณฑ์ 3 ระดับ
-              const levelInfo = getKnowledgeLevel(score, totalQ);
-              evaluationData = {
-                score: score,
-                total: totalQ,
-                pct: pct,
-                isSpecial: true,
-                level: levelInfo,
-                date: r.created_at
-              };
-            } else {
-              // ชุดที่ 1-11 ใช้เกณฑ์เดิม (ผ่าน >= 80%)
-              const passed = pct >= 80;
-              evaluationData = {
-                score: score,
-                total: totalQ,
-                pct: pct,
-                isSpecial: false,
-                passed: passed,
-                bg: passed ? "#d1ffd1" : "#ffd1d1",
-                color: passed ? "#005900" : "#900",
-                date: r.created_at
-              };
-            }
+            const pct = Math.round(((r.score || 0) / totalQ) * 100);
             
             if (!globalCandidateMap[key].quizScores[modKey] || pct > globalCandidateMap[key].quizScores[modKey].pct) {
-              globalCandidateMap[key].quizScores[modKey] = evaluationData;
+              globalCandidateMap[key].quizScores[modKey] = {
+                score: r.score,
+                total: totalQ,
+                pct: pct,
+                passed: pct >= 80,
+                date: r.created_at
+              };
             }
           }
         });
 
+        // 3. เติมข้อมูลข้อสอบอัตนัย (subjective_answers)
         (subjectiveAnswers || []).forEach(r => {
           const createdDate = r.created_at ? r.created_at.split('T')[0] : '';
           if (dateFilter && createdDate !== dateFilter) return;
 
           const userInfo = resolveUser(r);
-          if (keyword && !userInfo.name.toLowerCase().includes(keyword) && !userInfo.email.toLowerCase().includes(keyword) && !userInfo.experience.toLowerCase().includes(keyword)) {
+          if (keyword && !userInfo.name.toLowerCase().includes(keyword) && !userInfo.department.toLowerCase().includes(keyword) && !userInfo.experience.toLowerCase().includes(keyword)) {
             return;
           }
 
@@ -183,11 +205,17 @@
           if (!globalCandidateMap[key]) {
             globalCandidateMap[key] = {
               name: userInfo.name,
+              department: userInfo.department,
               experience: userInfo.experience,
               email: userInfo.email,
+              loginTime: userInfo.loginTime,
               quizScores: {},
               subjectiveTests: []
             };
+          } else {
+            if (globalCandidateMap[key].department === 'ไม่ระบุแผนก' && userInfo.department !== 'ไม่ระบุแผนก') {
+              globalCandidateMap[key].department = userInfo.department;
+            }
           }
 
           globalCandidateMap[key].subjectiveTests.push({
@@ -241,10 +269,12 @@
         <tr>
           <th class="col-sticky-1">#</th>
           <th class="col-sticky-2">ชื่อพนักงาน</th>
-          <th class="col-sticky-3">ประสบการณ์</th>
+          <th class="col-sticky-3">แผนก</th>
+          <th class="col-sticky-4">ประสบการณ์</th>
+          <th class="col-sticky-5">เวลาเข้าสู่ระบบ</th>
       `;
       MODULE_LIST.forEach(m => {
-        headerHTML += `<th style="text-align:center; font-size:0.85rem; min-width:120px;">${m.label}</th>`;
+        headerHTML += `<th style="text-align:center; font-size:0.85rem; min-width:110px;">${m.label}</th>`;
       });
       headerHTML += `
           <th style="text-align:center; min-width:90px;">อัตนัย</th>
@@ -254,42 +284,46 @@
       thead.innerHTML = headerHTML;
 
       if (candidates.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="${MODULE_LIST.length + 5}" style="text-align:center; color:#888;">ไม่พบข้อมูลพนักงานตามเงื่อนไข</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${MODULE_LIST.length + 7}" style="text-align:center; color:#888;">ไม่พบข้อมูลพนักงานตามเงื่อนไข</td></tr>`;
         return;
       }
 
       candidates.forEach((c, i) => {
         const row = document.createElement("tr");
         
+        let formattedTime = '-';
+        if (c.loginTime && c.loginTime !== '-') {
+          try {
+            formattedTime = new Date(c.loginTime).toLocaleString('th-TH', { 
+              year: 'numeric', month: 'short', day: 'numeric', 
+              hour: '2-digit', minute: '2-digit', second: '2-digit' 
+            });
+          } catch(e) {
+            formattedTime = c.loginTime;
+          }
+        }
+
         let rowHTML = `
           <td class="col-sticky-1">${i + 1}</td>
-          <td class="col-sticky-2"><strong>${c.name}</strong><br><small style="color:#64748b;">${c.email}</small></td>
-          <td class="col-sticky-3"><span class="badge-exp">${c.experience}</span></td>
+          <td class="col-sticky-2"><strong>${c.name}</strong></td>
+          <td class="col-sticky-3"><span style="color:#0284c7; font-weight:500;">${c.department}</span></td>
+          <td class="col-sticky-4"><span class="badge-exp">${c.experience}</span></td>
+          <td class="col-sticky-5" style="white-space:nowrap; font-size:0.85rem; color:#475569;">${formattedTime}</td>
         `;
 
         MODULE_LIST.forEach(m => {
           const testData = c.quizScores[m.key];
           if (testData) {
-            if (testData.isSpecial) {
-              rowHTML += `
-                <td style="text-align:center;">
-                  <span style="background:${testData.level.bg}; color:${testData.level.color}; padding:3px 6px; border-radius:4px; font-weight:bold; font-size:0.75rem; display:inline-block;">
-                    ${testData.level.name}
-                  </span>
-                  <br><strong style="font-size:0.85rem;">${testData.pct}%</strong>
-                  <br><small style="color:#555;">(${testData.score}/${testData.total})</small>
-                </td>
-              `;
-            } else {
-              rowHTML += `
-                <td style="text-align:center;">
-                  <span style="background:${testData.bg}; color:${testData.color}; padding:4px 8px; border-radius:6px; font-weight:bold; font-size:0.85rem; display:inline-block;">
-                    ${testData.pct}%
-                  </span>
-                  <br><small style="color:#555;">(${testData.score}/${testData.total})</small>
-                </td>
-              `;
-            }
+            const bg = testData.passed ? "#d1ffd1" : "#ffd1d1";
+            const color = testData.passed ? "#005900" : "#900";
+            rowHTML += `
+              <td style="text-align:center;">
+                <span style="background:${bg}; color:${color}; padding:4px 8px; border-radius:6px; font-weight:bold; font-size:0.85rem; display:inline-block;">
+                  ${testData.pct}%
+                </span>
+                <br><small style="color:#555;">(${testData.score}/${testData.total})</small>
+              </td>
+            `;
           } else {
             rowHTML += `<td style="text-align:center; color:#cbd5e1;">-</td>`;
           }
@@ -299,19 +333,12 @@
         rowHTML += `
           <td style="text-align:center;"><span class="badge-score" style="background:#f3e8ff; color:#6b21a8;">ส่ง ${subjCount} ชุด</span></td>
           <td style="text-align:center;">
-            <button class="btn-action" id="btn-report-${i}">🔍 รายงาน & AI</button>
+            <button class="btn-action" onclick='openCandidateReport(${JSON.stringify(c)})'>🔍 รายงาน & AI</button>
           </td>
         `;
 
         row.innerHTML = rowHTML;
         tbody.appendChild(row);
-
-        setTimeout(() => {
-          const btn = document.getElementById(`btn-report-${i}`);
-          if (btn) {
-            btn.addEventListener("click", () => openCandidateReport(c));
-          }
-        }, 0);
       });
     }
 
@@ -331,7 +358,7 @@
       }
     }
 
-    function openCandidateReport(c) {
+    window.openCandidateReport = async function(c) {
       const modalContent = document.getElementById("modalReportContent");
 
       let quizRows = "";
@@ -341,20 +368,15 @@
         MODULE_LIST.forEach(m => {
           const data = c.quizScores[m.key];
           if (data) {
-            let badge = "";
-            if (data.isSpecial) {
-              badge = `<span style="color:${data.level.color}; background:${data.level.bg}; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:0.75rem;">${data.level.name}</span>`;
-            } else {
-              badge = data.passed 
-                ? `<span style="color:#005900; background:#d1ffd1; padding:2px 6px; border-radius:4px; font-weight:bold;">ผ่าน (>=80%)</span>`
-                : `<span style="color:#900; background:#ffd1d1; padding:2px 6px; border-radius:4px; font-weight:bold;">ไม่ผ่าน</span>`;
-            }
+            const badge = data.passed 
+              ? `<span style="color:#005900; background:#d1ffd1; padding:2px 6px; border-radius:4px; font-weight:bold;">ผ่าน (>=80%)</span>`
+              : `<span style="color:#900; background:#ffd1d1; padding:2px 6px; border-radius:4px; font-weight:bold;">ไม่ผ่าน</span>`;
             quizRows += `
               <tr>
-                <td style="padding:4px 6px; border-bottom:1px solid #eee;">${m.label}</td>
-                <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:center;">${data.score} / ${data.total}</td>
-                <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:center;"><strong>${data.pct}%</strong></td>
-                <td style="padding:4px 6px; border-bottom:1px solid #eee; text-align:center;">${badge}</td>
+                <td style="padding:6px 8px; border-bottom:1px solid #eee;">${m.label}</td>
+                <td style="padding:6px 8px; border-bottom:1px solid #eee; text-align:center;">${data.score} / ${data.total}</td>
+                <td style="padding:6px 8px; border-bottom:1px solid #eee; text-align:center;"><strong>${data.pct}%</strong></td>
+                <td style="padding:6px 8px; border-bottom:1px solid #eee; text-align:center;">${badge}</td>
               </tr>
             `;
           }
@@ -363,7 +385,7 @@
 
       let subjectiveHTML = "";
       if (c.subjectiveTests.length === 0) {
-        subjectiveHTML = `<p style="color:#888; font-style:italic; font-size:0.8rem;">ยังไม่มีประวัติการทำข้อสอบอัตนัย</p>`;
+        subjectiveHTML = `<p style="color:#888; font-style:italic;">ยังไม่มีประวัติการทำข้อสอบอัตนัย</p>`;
       } else {
         c.subjectiveTests.forEach((sub, subIdx) => {
           let ansList = "";
@@ -372,193 +394,148 @@
             ansList = answers.map((ansItem, qIdx) => {
               const qText = QUESTIONS_LIST[qIdx] || `คำถามข้อที่ ${qIdx + 1}`;
               const val = (typeof ansItem === 'object' && ansItem !== null) ? (ansItem.answer || ansItem.value || JSON.stringify(ansItem)) : ansItem;
-              return `<div style="margin-bottom:4px; font-size:0.8rem;"><strong style="color:#007acc;">${qText}</strong> ตอบ: <span style="color:#333;">${val || '-'}</span></div>`;
+              return `<div style="margin-bottom:6px; font-size:0.85rem;"><strong style="color:#007acc;">${qText}</strong><br><span style="color:#333;">ตอบ: ${val || '-'}</span></div>`;
             }).join("");
           }
-          subjectiveHTML += `<div style="background:#f8fafc; border:1px solid #cbd5e1; padding:6px 8px; border-radius:4px; margin-bottom:6px;"><strong style="font-size:0.85rem; color:#1e293b;">ชุดที่ส่งครั้งที่ ${subIdx + 1} (${new Date(sub.date).toLocaleDateString('th-TH')})</strong><div style="margin-top:4px;">${ansList}</div></div>`;
+          subjectiveHTML += `<div style="background:#f8fafc; border:1px solid #cbd5e1; padding:10px; border-radius:6px; margin-bottom:8px;"><strong style="font-size:0.9rem; color:#1e293b;">ชุดที่ส่งครั้งที่ ${subIdx + 1} (${new Date(sub.date).toLocaleDateString('th-TH')})</strong><div style="margin-top:6px;">${ansList}</div></div>`;
         });
       }
 
+      let formattedLoginTime = c.loginTime && c.loginTime !== '-' ? new Date(c.loginTime).toLocaleString('th-TH') : '-';
+
       modalContent.innerHTML = `
-        <div style="background:#ffffff; padding:15px; color:#333; font-family:'Sarabun', sans-serif;" id="printableCard">
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom: 2px solid #007acc; padding-bottom: 8px; margin-bottom: 10px;">
+        <div style="background:#ffffff; padding:25px; color:#333; font-family:'Sarabun', sans-serif;" id="printableCard">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom: 2px solid #007acc; padding-bottom: 15px; margin-bottom: 20px;">
             <div>
-              <h2 style="color:#007acc; margin:0; font-size:18px;">📊 รายงานผลการประเมินรายบุคคล & AI Analytics</h2>
-              <p style="margin:3px 0 0 0; color:#64748b; font-size:11px;">พนักงาน: ${c.name} | อีเมล: ${c.email} | วันที่: ${new Date().toLocaleDateString('th-TH')}</p>
-              <div style="margin-top:4px;">
-                <span class="badge-exp" style="font-size:10px; padding:1px 6px;">ประสบการณ์: ${c.experience}</span>
+              <h2 style="color:#007acc; margin:0; font-size:22px;">📊 รายงานผลการประเมินรายบุคคล & AI Analytics</h2>
+              <p style="margin:5px 0 0 0; color:#64748b; font-size:13px;">พนักงาน: ${c.name} | แผนก: ${c.department} | เวลาเข้าสู่ระบบ: ${formattedLoginTime}</p>
+              <div style="margin-top:8px;">
+                <span class="badge-exp">ประสบการณ์ในหน้าที่: ${c.experience}</span>
               </div>
             </div>
-            <div style="width: 70px; height: 85px; border: 2px dashed #cbd5e1; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f8fafc; color: #94a3b8; font-size: 9px; text-align: center; padding: 2px; flex-shrink: 0;" title="ช่องสำหรับติดรูปถ่ายพนักงาน">
+            <div style="width: 100px; height: 120px; border: 2px dashed #cbd5e1; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f8fafc; color: #94a3b8; font-size: 11px; text-align: center; padding: 5px; flex-shrink: 0;" title="ช่องสำหรับติดรูปถ่ายพนักงาน">
               <span>📷</span>
-              <span style="margin-top:2px;">ติดรูปถ่าย</span>
+              <span style="margin-top:4px;">ติดรูปถ่ายพนักงาน</span>
             </div>
           </div>
 
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <h3 style="color:#2c3e50; font-size:13px; margin:0; border-left: 3px solid #007acc; padding-left: 6px;">🤖 ผลการวิเคราะห์เชิงลึกโดย AI</h3>
-            <button class="btn-action" id="aiAnalyzeBtn" style="background:#8b5cf6; padding:4px 8px; font-size:0.75rem;">🤖 ให้ AI วิเคราะห์เชิงลึก</button>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="color:#2c3e50; font-size:16px; margin:0; border-left: 4px solid #007acc; padding-left: 8px;">🤖 ผลการวิเคราะห์เชิงลึกโดย AI</h3>
+            <button class="btn-action" id="aiAnalyzeBtn" style="background:#8b5cf6;" onclick="triggerAIAnalysis()">🤖 ให้ AI วิเคราะห์เชิงลึก</button>
           </div>
 
-          <div id="aiAnalysisContainer" style="margin-bottom:10px;">
-            <div class="swot-grid" style="gap: 8px;">
-              <div class="swot-card strength" style="padding: 8px;">
-                <h4 style="font-size: 0.85rem; margin-bottom: 4px;">💪 จุดแข็ง (Strengths)</h4>
-                <textarea id="inputStrengths" class="auto-textarea" style="min-height: 45px; font-size: 0.8rem;" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
+          <div id="aiAnalysisContainer" style="margin-bottom:20px;">
+            <div class="swot-grid">
+              <div class="swot-card strength">
+                <h4>💪 จุดแข็ง (Strengths)</h4>
+                <textarea id="inputStrengths" class="auto-textarea" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
               </div>
-              <div class="swot-card weakness" style="padding: 8px;">
-                <h4 style="font-size: 0.85rem; margin-bottom: 4px;">⚠️ จุดที่ควรพัฒนา (Weaknesses)</h4>
-                <textarea id="inputWeaknesses" class="auto-textarea" style="min-height: 45px; font-size: 0.8rem;" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
+              <div class="swot-card weakness">
+                <h4>⚠️ จุดที่ควรพัฒนา (Weaknesses)</h4>
+                <textarea id="inputWeaknesses" class="auto-textarea" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
               </div>
             </div>
-            <div class="swot-card recommendation" style="margin-top:6px; padding: 8px;">
-              <h4 style="font-size: 0.85rem; margin-bottom: 4px;">💡 แนวทางการโค้ชชิ่งเฉพาะบุคคล (Action Plan)</h4>
-              <textarea id="inputRecommendations" class="auto-textarea" style="min-height: 40px; font-size: 0.8rem;" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
+            <div class="swot-card recommendation" style="margin-top:12px;">
+              <h4>💡 แนวทางการโค้ชชิ่งเฉพาะบุคคล (Action Plan)</h4>
+              <textarea id="inputRecommendations" class="auto-textarea" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
             </div>
           </div>
 
-          <h3 style="color:#2c3e50; font-size:13px; margin-top:10px; margin-bottom:6px; border-left: 3px solid #007acc; padding-left: 6px;">📋 คะแนนสรุปแบบทดสอบปรนัย (รายวิชา 11 ชุด)</h3>
-          <table style="width:100%; border-collapse:collapse; margin-bottom:10px; font-size:0.8rem;">
+          <h3 style="color:#2c3e50; font-size:16px; margin-top:20px; margin-bottom:10px; border-left: 4px solid #007acc; padding-left: 8px;">📋 คะแนนสรุปแบบทดสอบปรนัย (รายวิชา 11 ชุด)</h3>
+          <table style="width:100%; border-collapse:collapse; margin-bottom:20px; font-size:0.9rem;">
             <thead>
               <tr style="background:#007acc; color:white;">
-                <th style="padding:5px 6px; text-align:left; font-size:0.8rem;">ชื่อชุดแบบทดสอบ</th>
-                <th style="padding:5px 6px; text-align:center; font-size:0.8rem;">คะแนน</th>
-                <th style="padding:5px 6px; text-align:center; font-size:0.8rem;">ร้อยละ</th>
-                <th style="padding:5px 6px; text-align:center; font-size:0.8rem;">สถานะ / ระดับ</th>
+                <th style="padding:8px; text-align:left;">ชื่อชุดแบบทดสอบ</th>
+                <th style="padding:8px; text-align:center;">คะแนน</th>
+                <th style="padding:8px; text-align:center;">ร้อยละ</th>
+                <th style="padding:8px; text-align:center;">สถานะ</th>
               </tr>
             </thead>
             <tbody>${quizRows}</tbody>
           </table>
 
-          <h3 style="color:#2c3e50; font-size:13px; margin-top:10px; margin-bottom:6px; border-left: 3px solid #007acc; padding-left: 6px;">✍️ รายละเอียดข้อสอบอัตนัยและคำตอบของพนักงาน</h3>
+          <h3 style="color:#2c3e50; font-size:16px; margin-top:20px; margin-bottom:10px; border-left: 4px solid #007acc; padding-left: 8px;">✍️ รายละเอียดข้อสอบอัตนัยและคำตอบของพนักงาน</h3>
           ${subjectiveHTML}
         </div>
       `;
 
       document.getElementById("individualModal").style.display = "block";
 
-      const aiBtn = document.getElementById("aiAnalyzeBtn");
-      if (aiBtn) {
-        aiBtn.onclick = async function() {
-          aiBtn.disabled = true;
-          aiBtn.innerText = "⏳ AI กำลังวิเคราะห์ข้อมูล...";
-          
-          const aiResult = await evaluateCandidateWithVercelAPI(c);
-          if (aiResult && aiResult.strengths) {
-            document.getElementById("inputStrengths").value = (aiResult.strengths || []).map(s => `• ${s}`).join('\n');
-            document.getElementById("inputWeaknesses").value = (aiResult.weaknesses || []).map(w => `• ${w}`).join('\n');
-            document.getElementById("inputRecommendations").value = (aiResult.recommendations || []).map(r => `• ${r}`).join('\n');
-            alert("AI วิเคราะห์ข้อมูลสำเร็จแล้วครับ!");
-          } else {
-            alert("เกิดข้อผิดพลาดในการเชื่อมต่อ AI Backend บน Vercel");
-          }
-          aiBtn.disabled = false;
-          aiBtn.innerText = "🤖 ให้ AI วิเคราะห์เชิงลึกอีกครั้ง";
-        };
-      }
+      window.triggerAIAnalysis = async function() {
+        const btn = document.getElementById("aiAnalyzeBtn");
+        btn.disabled = true;
+        btn.innerText = "⏳ AI กำลังวิเคราะห์ข้อมูลผ่าน Vercel...";
+        
+        const aiResult = await evaluateCandidateWithVercelAPI(c);
+        if (aiResult && aiResult.strengths) {
+          document.getElementById("inputStrengths").value = (aiResult.strengths || []).map(s => `• ${s}`).join('\n');
+          document.getElementById("inputWeaknesses").value = (aiResult.weaknesses || []).map(w => `• ${w}`).join('\n');
+          document.getElementById("inputRecommendations").value = (aiResult.recommendations || []).map(r => `• ${r}`).join('\n');
+          alert("AI วิเคราะห์ข้อมูลสำเร็จแล้วครับ!");
+        } else {
+          alert("เกิดข้อผิดพลาดในการเชื่อมต่อ AI Backend บน Vercel");
+        }
+        btn.disabled = false;
+        btn.innerText = "🤖 ให้ AI วิเคราะห์เชิงลึกอีกครั้ง";
+      };
 
       document.getElementById("downloadIndividualPDFBtn").onclick = function() {
         downloadPDFReport(c.name);
       };
-    }
+    };
 
-    function closeModal() {
+    window.closeModal = function() {
       document.getElementById("individualModal").style.display = "none";
-    }
-
-    window.closeModal = closeModal;
-
+    };
 
     function downloadPDFReport(name) {
       const btn = document.getElementById("downloadIndividualPDFBtn");
       btn.disabled = true;
       btn.innerText = "⏳ กำลังสร้าง PDF...";
 
-      // 1. ดึงค่าจาก textarea หน้าจอหลักมาก่อนแบบสดๆ
-      const strengthsVal = document.getElementById("inputStrengths")?.value.trim() || "";
-      const weaknessesVal = document.getElementById("inputWeaknesses")?.value.trim() || "";
-      const recsVal = document.getElementById("inputRecommendations")?.value.trim() || "";
+      const strengthsVal = document.getElementById("inputStrengths").value.trim();
+      const weaknessesVal = document.getElementById("inputWeaknesses").value.trim();
+      const recsVal = document.getElementById("inputRecommendations").value.trim();
 
-      const formatToList = (text) => {
-        if (!text) return '<li>-</li>';
-        return text.split('\n')
-          .filter(item => item.trim() !== '')
-          .map(item => `<li>${item.replace(/^[•\-\*]\s*/, '')}</li>`)
-          .join('');
-      };
+      const strengthsList = strengthsVal ? strengthsVal.split('\n').filter(s => s.trim() !== '').map(s => `<li>${s.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
+      const weaknessesList = weaknessesVal ? weaknessesVal.split('\n').filter(w => w.trim() !== '').map(w => `<li>${w.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
+      const recsList = recsVal ? recsVal.split('\n').filter(r => r.trim() !== '').map(r => `<li>${r.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
 
-      const strengthsList = formatToList(strengthsVal);
-      const weaknessesList = formatToList(weaknessesVal);
-      const recsList = formatToList(recsVal);
-
-      const originalCard = document.getElementById("printableCard");
-      if (!originalCard) {
-        alert("ไม่พบข้อมูลรายงานสำหรับพิมพ์");
+      const originalElement = document.getElementById("printableCard");
+      if (!originalElement) {
+        alert("ไม่พบข้อมูลสำหรับพิมพ์รายงาน");
         btn.disabled = false;
         btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
         return;
       }
 
-      // 2. โคลนโหนดสำหรับทำ PDF
-      const element = originalCard.cloneNode(true);
+      const element = originalElement.cloneNode(true);
       const aiBtn = element.querySelector('#aiAnalyzeBtn');
       if (aiBtn) aiBtn.remove();
 
-      // 3. แทนที่ textarea ในโหนดโคลนด้วยข้อความที่ดึงมาเมื่อสักครู่
-      const strengthCard = element.querySelector('.swot-card.strength');
-      if (strengthCard) {
-        const ta = strengthCard.querySelector('textarea');
-        if (ta) {
-          ta.outerHTML = `<ul style="margin:0; padding-left:15px; font-size:0.75rem; line-height: 1.2; color: #333;">${strengthsList}</ul>`;
-        }
-      }
-
-      const weaknessCard = element.querySelector('.swot-card.weakness');
-      if (weaknessCard) {
-        const ta = weaknessCard.querySelector('textarea');
-        if (ta) {
-          ta.outerHTML = `<ul style="margin:0; padding-left:15px; font-size:0.75rem; line-height: 1.2; color: #333;">${weaknessesList}</ul>`;
-        }
-      }
-
-      const recCard = element.querySelector('.swot-card.recommendation');
-      if (recCard) {
-        const ta = recCard.querySelector('textarea');
-        if (ta) {
-          ta.outerHTML = `<ul style="margin:0; padding-left:15px; font-size:0.75rem; line-height: 1.2; color: #333;">${recsList}</ul>`;
-        }
-      }
-
-      // 4. นำไปแปะไว้นอกจอเพื่อให้ html2canvas เรนเดอร์ได้สมบูรณ์
-      element.style.position = 'absolute';
-      element.style.left = '-9999px';
-      element.style.top = '0';
-      element.style.width = '750px';
-      element.style.background = '#ffffff';
-      document.body.appendChild(element);
+      element.querySelector('.swot-card.strength').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${strengthsList}</ul>`;
+      element.querySelector('.swot-card.weakness').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${weaknessesList}</ul>`;
+      element.querySelector('.swot-card.recommendation').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${recsList}</ul>`;
 
       const opt = {
-        margin:       [0.15, 0.15, 0.15, 0.15],
-        filename:     `รายงานรอบด้าน_${name}.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, letterRendering: true },
-        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait', compress: true }
+        margin: [0.3, 0.3, 0.3, 0.3],
+        filename: `รายงานรอบด้าน_${name}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: true },
+        jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
       };
 
       html2pdf().set(opt).from(element).save().then(() => {
-        document.body.removeChild(element);
         btn.disabled = false;
         btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
       }).catch(err => {
         console.error("PDF Export Error:", err);
-        if (document.body.contains(element)) {
-          document.body.removeChild(element);
-        }
+        alert("เกิดข้อผิดพลาดในการดาวน์โหลด PDF");
         btn.disabled = false;
         btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
-        alert("เกิดข้อผิดพลาดในการสร้างไฟล์ PDF");
       });
     }
+
     function renderChart(candidates) {
       const ctx = document.getElementById("scoreChart").getContext("2d");
       const moduleSummary = {};
@@ -618,20 +595,15 @@
         const rowObj = {
           "ลำดับ": index + 1,
           "ชื่อ-นามสกุล": c.name,
-          "อีเมล": c.email,
-          "ประสบการณ์": c.experience,
+          "แผนก": c.department,
+          "ประสบการณ์ในหน้าที่": c.experience,
+          "เวลาเข้าสู่ระบบ": c.loginTime && c.loginTime !== '-' ? new Date(c.loginTime).toLocaleString('th-TH') : "-",
           "จำนวนชุดอัตนัยที่ส่ง": c.subjectiveTests.length
         };
 
         MODULE_LIST.forEach(m => {
           const testData = c.quizScores[m.key];
-          if (testData) {
-            rowObj[m.label] = testData.isSpecial 
-              ? `${testData.level.name} (${testData.pct}%, ${testData.score}/${testData.total})` 
-              : `${testData.passed ? 'ผ่าน' : 'ไม่ผ่าน'} (${testData.pct}%, ${testData.score}/${testData.total})`;
-          } else {
-            rowObj[m.label] = "-";
-          }
+          rowObj[m.label] = testData ? `${testData.pct}% (${testData.score}/${testData.total})` : "-";
         });
 
         rowObj["จุดแข็ง (AI Strengths)"] = document.getElementById("inputStrengths")?.value || "-";
@@ -675,6 +647,7 @@
     .btn-action:hover { background: #0369a1; }
     .chart-container { background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 25px; }
     
+    /* 📌 ส่วนตาราง Matrix บังคับ Scrollbar และ Sticky ให้ทำงานอย่างเด็ดขาด */
     .table-responsive { 
       width: 100% !important; 
       max-height: 550px !important; 
@@ -705,16 +678,17 @@
     
     th:last-child, td:last-child { border-right: none !important; }
     
+    /* 📌 ตรึงหัวตาราง (Sticky Header) */
     th { 
       background: #007acc !important; 
       color: white !important; 
       font-weight: 600 !important; 
       white-space: nowrap !important; 
       position: sticky !important; 
-      top: 0 !important; 
-      z-index: 10 !important; 
+      top: 0 !important; zIndex: 10 !important; 
     }
 
+    /* 📌 ตรึงคอลัมน์ซ้ายสุด (1. ลำดับ, 2. ชื่อพนักงาน, 3. แผนก, 4. ประสบการณ์, 5. เวลาเข้าสู่ระบบ) แบบกำหนดระยะห่างถูกต้อง */
     .col-sticky-1 {
       position: sticky !important;
       left: 0 !important;
@@ -728,20 +702,38 @@
       left: 45px !important;
       z-index: 5 !important;
       background-color: #f8fafc !important;
-      min-width: 190px !important;
+      min-width: 180px !important;
     }
     .col-sticky-3 {
       position: sticky !important;
-      left: 235px !important;
+      left: 225px !important;
+      z-index: 5 !important;
+      background-color: #f8fafc !important;
+      min-width: 140px !important;
+    }
+    .col-sticky-4 {
+      position: sticky !important;
+      left: 365px !important;
       z-index: 5 !important;
       background-color: #f8fafc !important;
       min-width: 110px !important;
       text-align: center !important;
     }
+    .col-sticky-5 {
+      position: sticky !important;
+      left: 475px !important;
+      z-index: 5 !important;
+      background-color: #f8fafc !important;
+      min-width: 160px !important;
+      text-align: center !important;
+    }
 
+    /* 📌 จุดตัดหัวตารางและคอลัมน์ซ้ายสุด ให้อยู่ชั้นบนสุดเสมอ */
     th.col-sticky-1 { z-index: 20 !important; background-color: #007acc !important; }
     th.col-sticky-2 { z-index: 20 !important; background-color: #007acc !important; }
     th.col-sticky-3 { z-index: 20 !important; background-color: #007acc !important; }
+    th.col-sticky-4 { z-index: 20 !important; background-color: #007acc !important; }
+    th.col-sticky-5 { z-index: 20 !important; background-color: #007acc !important; }
 
     tr:hover td { background-color: #f1f5f9 !important; }
 
@@ -771,7 +763,7 @@
     <h2>🎯 แดชบอร์ดสรุปผลการประเมินรายวิชาแบบเมทริกซ์ (Matrix Evaluation 11 ชุด)</h2>
     
     <div class="search-box">
-      <input type="text" id="searchInput" placeholder="ค้นหาด้วยชื่อพนักงาน หรือ อีเมล">
+      <input type="text" id="searchInput" placeholder="ค้นหาด้วยชื่อพนักงาน, แผนก หรือประสบการณ์">
       <input type="date" id="dateInput">
       <button id="searchBtn">ค้นหาข้อมูล</button>
     </div>
