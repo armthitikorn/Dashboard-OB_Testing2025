@@ -112,52 +112,177 @@
             type: 'quiz',
             name: name,
             department: department,
-            experience: experience,
-            email: emailKey,
-            submissionTime: submissionTime,
-            quizScores: quizScores,
-            subjectiveTests: []
-          });
+    const MODULE_LIST = [
+      { key: "PRUgreat", label: "PRUgreat return 20/10" },
+      { key: "SuperSmartSave", label: "SuperSmartSave 20/9" },
+      { key: "PRUClick", label: "PRUClick Savings 20/9" },
+      { key: "PRUMhao", label: "PRUMhao Mhao Double Sure" },
+      { key: "Healthy Plus", label: "PRU Healthy Plus" },
+      { key: "ฟอกเงิน", label: "ป้องกันการฟอกเงิน (AML)" },
+      { key: "Underwriting", label: "Underwriting" },
+      { key: "Copayment", label: "Copayment" },
+      { key: "FATCA", label: "FATCA & CRS" },
+      { key: "QC Matrix", label: "QC Matrix" },
+      { key: "Salesforce", label: "Salesforce" },
+      { key: "ความรู้เกี่ยวกับประกันชีวิต", label: "ความรู้เกี่ยวกับประกันชีวิต" },
+      { key: "ความกังวลของลูกค้า", label: "ความกังวลของลูกค้า" }
+    ];
+
+    let globalCandidateMap = {};
+
+    // 📌 ปรับปรุงฟังก์ชันจับคู่ชื่อวิชาให้รองรับทั้งคำสั้นและชื่อเต็มในฐานข้อมูล
+    function matchModuleKey(quizSetName) {
+      if (!quizSetName) return null;
+      const cleanName = quizSetName.trim();
+      for (const m of MODULE_LIST) {
+        if (cleanName.includes(m.key) || m.key.includes(cleanName)) {
+          return m.key;
+        }
+      }
+      return null;
+    }
+
+    async function fetchData() {
+      const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
+      const dateFilter = document.getElementById("dateInput").value.trim();
+
+      try {
+        const { data: users } = await supabase.from("users").select("*");
+        const { data: quizResults } = await supabase.from("quiz_results").select("*").order('created_at', { ascending: false });
+        const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*").order('created_at', { ascending: false });
+
+        const userMap = {};
+        (users || []).forEach(u => {
+          if (u.email) userMap[u.email.toLowerCase().trim()] = u;
         });
 
-        // 2. ประมวลผลจาก subjective_answers (แยกแต่ละรอบการส่งอัตนัย)
+        const resolveUser = (r) => {
+          const emailKey = (r.user_email || r.email || '').toLowerCase().trim();
+          const matchedUser = userMap[emailKey];
+
+          let finalName = 'ไม่ระบุชื่อ';
+          if (r.name && r.name !== 'EMPTY' && r.name.trim() !== '') {
+            finalName = r.name;
+          } else if (matchedUser && matchedUser.full_name) {
+            finalName = matchedUser.full_name;
+          } else if (emailKey) {
+            finalName = emailKey;
+          }
+
+          let finalDept = 'ไม่ระบุแผนก';
+          if (r.department && r.department.trim() !== '') {
+            finalDept = r.department;
+          } else if (r.dept && r.dept.trim() !== '') {
+            finalDept = r.dept;
+          } else if (matchedUser && (matchedUser.department || matchedUser.dept)) {
+            finalDept = matchedUser.department || matchedUser.dept;
+          }
+
+          let finalExp = 'ไม่ระบุ';
+          if (r.experience !== null && r.experience !== undefined && r.experience !== '') {
+            finalExp = String(r.experience);
+          } else if (matchedUser && matchedUser.experience) {
+            finalExp = String(matchedUser.experience);
+          }
+
+          let finalLoginTime = '-';
+          if (r.created_at) {
+            finalLoginTime = r.created_at;
+          } else if (matchedUser && matchedUser.login_time) {
+            finalLoginTime = matchedUser.login_time;
+          } else if (r.login_time) {
+            finalLoginTime = r.login_time;
+          }
+
+          return { 
+            name: finalName, 
+            department: finalDept, 
+            experience: finalExp, 
+            email: emailKey || 'N/A',
+            loginTime: finalLoginTime 
+          };
+        };
+
+        globalCandidateMap = {};
+
+        // 1. ประมวลผลจาก quiz_results โดยใช้ Key ที่ผูกกับเวลาและชื่อ เพื่อให้แต่ละรอบไม่ทับกัน
+        (quizResults || []).forEach(r => {
+          const createdDate = r.created_at ? r.created_at.split('T')[0] : '';
+          if (dateFilter && createdDate !== dateFilter) return;
+
+          const userInfo = resolveUser(r);
+          if (keyword && !userInfo.name.toLowerCase().includes(keyword) && !userInfo.department.toLowerCase().includes(keyword) && !userInfo.experience.toLowerCase().includes(keyword)) {
+            return;
+          }
+
+          // 📌 สร้าง Unique Key แยกตามบุคคลและรอบเวลาที่ส่ง (ป้องการเวลาของรอบใหม่ไปทับรอบเก่า)
+          const timeSlot = r.created_at ? r.created_at.substring(0, 16) : 'default';
+          const key = `${userInfo.name}_${timeSlot}`;
+
+          if (!globalCandidateMap[key]) {
+            globalCandidateMap[key] = {
+              name: userInfo.name,
+              department: userInfo.department,
+              experience: userInfo.experience,
+              email: userInfo.email,
+              loginTime: userInfo.loginTime,
+              quizScores: {},
+              subjectiveTests: []
+            };
+          }
+
+          const modKey = matchModuleKey(r.quiz_set);
+          if (modKey) {
+            const totalQ = r.total_questions || 10;
+            const pct = Math.round(((r.score || 0) / totalQ) * 100);
+            
+            globalCandidateMap[key].quizScores[modKey] = {
+              score: r.score,
+              total: totalQ,
+              pct: pct,
+              passed: pct >= 80,
+              date: r.created_at
+            };
+          }
+        });
+
+        // 2. ประมวลผลจาก subjective_answers
         (subjectiveAnswers || []).forEach(r => {
           const createdDate = r.created_at ? r.created_at.split('T')[0] : '';
           if (dateFilter && createdDate !== dateFilter) return;
 
-          const emailKey = (r.user_email || r.email || '').toLowerCase().trim();
-          const matchedUser = userMap[emailKey];
+          const userInfo = resolveUser(r);
+          if (keyword && !userInfo.name.toLowerCase().includes(keyword) && !userInfo.department.toLowerCase().includes(keyword) && !userInfo.experience.toLowerCase().includes(keyword)) {
+            return;
+          }
 
-          let name = r.name && r.name !== 'EMPTY' && r.name.trim() !== '' ? r.name : (matchedUser ? matchedUser.full_name : (emailKey || 'ไม่ระบุชื่อ'));
-          let department = matchedUser && (matchedUser.department || matchedUser.dept) ? (matchedUser.department || matchedUser.dept) : (r.department || r.dept || 'ไม่ระบุแผนก');
-          let experience = r.experience || (matchedUser ? matchedUser.experience : 'ไม่ระบุ');
-          let submissionTime = r.created_at || (matchedUser ? matchedUser.login_time : '-');
+          const timeSlot = r.created_at ? r.created_at.substring(0, 16) : 'default';
+          const key = `${userInfo.name}_${timeSlot}`;
 
-          if (keyword && !name.toLowerCase().includes(keyword) && !department.toLowerCase().includes(keyword)) return;
+          if (!globalCandidateMap[key]) {
+            globalCandidateMap[key] = {
+              name: userInfo.name,
+              department: userInfo.department,
+              experience: userInfo.experience,
+              email: userInfo.email,
+              loginTime: userInfo.loginTime,
+              quizScores: {},
+              subjectiveTests: []
+            };
+          }
 
-          globalSubmissionsArray.push({
-            id: r.id || Math.random(),
-            type: 'subjective',
-            name: name,
-            department: department,
-            experience: experience,
-            email: emailKey,
-            submissionTime: submissionTime,
-            quizScores: {},
-            subjectiveTests: [{
-              answers: r.answers,
-              ai_analysis: r.ai_analysis,
-              date: r.created_at
-            }]
+          globalCandidateMap[key].subjectiveTests.push({
+            answers: r.answers,
+            ai_analysis: r.ai_analysis,
+            date: r.created_at
           });
         });
 
-        // เรียงลำดับข้อมูลจากใหม่ไปเก่า
-        globalSubmissionsArray.sort((a, b) => new Date(b.submissionTime) - new Date(a.submissionTime));
+        const candidatesArray = Object.values(globalCandidateMap);
 
-        renderSummaryStats(globalSubmissionsArray);
-        renderMatrixTable(globalSubmissionsArray);
-        renderChart(globalSubmissionsArray);
+        renderSummaryStats(candidatesArray);
+        renderMatrixTable(candidatesArray);
+        renderChart(candidatesArray);
 
       } catch (err) {
         console.error("Fetch Data Error:", err);
