@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>แดชบอร์ดสรุปผลการประเมินรอบด้าน (Matrix 11 ชุด + อัตนัย & AI)</title>
+  <title>แดชบอร์ดสรุปผลการประเมินแยกตามรอบการทำข้อสอบ</title>
   
   <!-- Fonts & Libraries -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -20,6 +20,9 @@
     const supabaseUrl = 'https://wzwyotzzxycqfwercakh.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno';
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // 📌 ประกาศตัวแปร Global เพื่อไม่ให้ข้อมูลหาย (จุดที่แก้ไข)
+    let globalSubmissionsArray = [];
 
     const MODULE_LIST = [
       { key: "PRUgreat", label: "PRUgreat return 20/10" },
@@ -50,8 +53,6 @@
       "คำถามอัตนัยข้อที่ 10 (ทำแล้วยกเลิกได้ไหม?)"
     ];
 
-    let globalCandidateMap = {};
-
     function matchModuleKey(quizSetName) {
       if (!quizSetName) return null;
       for (const m of MODULE_LIST) {
@@ -74,135 +75,10 @@
           if (u.email) userMap[u.email.toLowerCase().trim()] = u;
         });
 
-        const resolveUser = (r) => {
-          const emailKey = (r.user_email || r.email || '').toLowerCase().trim();
-          const matchedUser = userMap[emailKey];
-
-          let finalName = 'ไม่ระบุชื่อ';
-          if (r.name && r.name !== 'EMPTY' && r.name.trim() !== '') {
-            finalName = r.name;
-          } else if (matchedUser && matchedUser.full_name) {
-            finalName = matchedUser.full_name;
-          } else if (emailKey) {
-            finalName = emailKey;
-          }
-
-          // 📌 ดึงข้อมูลแผนก (Department) อย่างแม่นยำ
-          let finalDept = 'ไม่ระบุแผนก';
-          if (matchedUser && (matchedUser.department || matchedUser.dept)) {
-            finalDept = matchedUser.department || matchedUser.dept;
-          } else if (r.department && r.department.trim() !== '') {
-            finalDept = r.department;
-          } else if (r.dept && r.dept.trim() !== '') {
-            finalDept = r.dept;
-          }
-
-          let finalExp = 'ไม่ระบุ';
-          if (r.experience !== null && r.experience !== undefined && r.experience !== '') {
-            finalExp = String(r.experience);
-          } else if (matchedUser && matchedUser.experience) {
-            finalExp = String(matchedUser.experience);
-          }
-
-          // 📌 ดึงเวลาเข้าสู่ระบบ (login_time)
-          let finalLoginTime = '-';
-          if (matchedUser && matchedUser.login_time) {
-            finalLoginTime = matchedUser.login_time;
-          } else if (r.login_time) {
-            finalLoginTime = r.login_time;
-          } else if (r.created_at) {
-            finalLoginTime = r.created_at;
-          }
-
-          return { 
-            name: finalName, 
-            department: finalDept, 
-            experience: finalExp, 
-            email: emailKey || 'N/A',
-            loginTime: finalLoginTime 
-          };
-        };
-
-        globalCandidateMap = {};
-
-        // 1. นำข้อมูลจากตาราง users มาตั้งต้นก่อน เพื่อให้ได้รายชื่อและแผนกที่ลงทะเบียนไว้ครบถ้วน
-        (users || []).forEach(u => {
-          const name = u.full_name || u.email || 'ไม่ระบุชื่อ';
-          const emailKey = (u.email || '').toLowerCase().trim();
-          
-          if (keyword && !name.toLowerCase().includes(keyword) && !(u.department || '').toLowerCase().includes(keyword)) return;
-
-          globalCandidateMap[name] = {
-            name: name,
-            department: u.department || u.dept || 'ไม่ระบุแผนก',
-            experience: u.experience || 'ไม่ระบุ',
-            email: emailKey,
-            loginTime: u.login_time || '-',
-            quizScores: {},
-            subjectiveTests: []
-          };
-        });
-
-        // 2. เติมข้อมูลผลสอบปรนัย (quiz_results)
-        (quizResults || []).forEach(r => {
-          const createdDate = r.created_at ? r.created_at.split('T')[0] : '';
-          if (dateFilter && createdDate !== dateFilter) return;
-
-          const userInfo = resolveUser(r);
-          if (keyword && !userInfo.name.toLowerCase().includes(keyword) && !userInfo.department.toLowerCase().includes(keyword) && !userInfo.experience.toLowerCase().includes(keyword)) {
-            return;
-          }
-
-          const key = userInfo.name;
-          if (!globalCandidateMap[key]) {
-            globalCandidateMap[key] = {
-              name: userInfo.name,
-              department: userInfo.department,
-              experience: userInfo.experience,
-              email: userInfo.email,
-              loginTime: userInfo.loginTime,
-              quizScores: {},
-              subjectiveTests: []
-            };
-          } else {
-            // ถ้าในตาราง users ไม่มีแผนกหรือเวลา แต่ใน quiz_results มี ให้ดึงมาเติม
-            if (globalCandidateMap[key].department === 'ไม่ระบุแผนก' && userInfo.department !== 'ไม่ระบุแผนก') {
-              globalCandidateMap[key].department = userInfo.department;
-            }
-            if (userInfo.loginTime !== '-' && globalCandidateMap[key].loginTime === '-') {
-              globalCandidateMap[key].loginTime = userInfo.loginTime;
-            }
-          }
-
-          const modKey = matchModuleKey(r.quiz_set);
-          if (modKey) {
-            const totalQ = r.total_questions || 10;
-            const pct = Math.round(((r.score || 0) / totalQ) * 100);
-            
-            if (!globalCandidateMap[key].quizScores[modKey] || pct > globalCandidateMap[key].quizScores[modKey].pct) {
-              globalCandidateMap[key].quizScores[modKey] = {
-                score: r.score,
-                total: totalQ,
-                pct: pct,
-                passed: pct >= 80,
-                date: r.created_at
-    async function fetchData() {
-      const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
-      const dateFilter = document.getElementById("dateInput").value.trim();
-
-      try {
-        const { data: users } = await supabase.from("users").select("*");
-        const { data: quizResults } = await supabase.from("quiz_results").select("*").order('created_at', { ascending: false });
-        const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*").order('created_at', { ascending: false });
-
-        const userMap = {};
-        (users || []).forEach(u => {
-          if (u.email) userMap[u.email.toLowerCase().trim()] = u;
-        });
-
+        // ล้างค่า Array เพื่อเตรียมรับข้อมูลใหม่
         globalSubmissionsArray = [];
 
-        // 1. ประมวลผลจาก quiz_results (แยกแต่ละรอบการส่งข้อสอบ)
+        // 1. ประมวลผลจาก quiz_results (แยกแต่ละรอบการส่งข้อสอบปรนัย)
         (quizResults || []).forEach(r => {
           const createdDate = r.created_at ? r.created_at.split('T')[0] : '';
           if (dateFilter && createdDate !== dateFilter) return;
@@ -276,6 +152,9 @@
           });
         });
 
+        // เรียงลำดับข้อมูลจากใหม่ไปเก่า
+        globalSubmissionsArray.sort((a, b) => new Date(b.submissionTime) - new Date(a.submissionTime));
+
         renderSummaryStats(globalSubmissionsArray);
         renderMatrixTable(globalSubmissionsArray);
         renderChart(globalSubmissionsArray);
@@ -285,19 +164,16 @@
       }
     }
 
-    function renderSummaryStats(candidates) {
-      document.getElementById("totalCandidates").innerText = candidates.length;
+    function renderSummaryStats(submissions) {
+      document.getElementById("totalCandidates").innerText = new Set(submissions.map(s => s.name)).size;
       
-      let totalQuizzesCount = 0;
-      let totalSubjectiveCount = 0;
+      let totalQuizzesCount = submissions.filter(s => Object.keys(s.quizScores).length > 0).length;
+      let totalSubjectiveCount = submissions.filter(s => s.subjectiveTests.length > 0).length;
       let sumPct = 0;
       let quizCountForAvg = 0;
 
-      candidates.forEach(c => {
-        totalQuizzesCount += Object.keys(c.quizScores).length;
-        totalSubjectiveCount += c.subjectiveTests.length;
-
-        Object.values(c.quizScores).forEach(q => {
+      submissions.forEach(s => {
+        Object.values(s.quizScores).forEach(q => {
           sumPct += q.pct;
           quizCountForAvg++;
         });
@@ -308,7 +184,7 @@
       document.getElementById("avgScore").innerText = quizCountForAvg > 0 ? (sumPct / quizCountForAvg).toFixed(1) + "%" : "0%";
     }
 
-    function renderMatrixTable(candidates) {
+    function renderMatrixTable(submissions) {
       const thead = document.getElementById("matrixTableHead");
       const tbody = document.getElementById("matrixTableBody");
       thead.innerHTML = "";
@@ -320,7 +196,7 @@
           <th class="col-sticky-2">ชื่อพนักงาน</th>
           <th class="col-sticky-3">แผนก</th>
           <th class="col-sticky-4">ประสบการณ์</th>
-          <th class="col-sticky-5">เวลาเข้าสู่ระบบ</th>
+          <th class="col-sticky-5">เวลาที่ทำแบบทดสอบ</th>
       `;
       MODULE_LIST.forEach(m => {
         headerHTML += `<th style="text-align:center; font-size:0.85rem; min-width:110px;">${m.label}</th>`;
@@ -332,23 +208,23 @@
       `;
       thead.innerHTML = headerHTML;
 
-      if (candidates.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="${MODULE_LIST.length + 7}" style="text-align:center; color:#888;">ไม่พบข้อมูลพนักงานตามเงื่อนไข</td></tr>`;
+      if (submissions.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="${MODULE_LIST.length + 7}" style="text-align:center; color:#888;">ไม่พบข้อมูลประวัติการทำข้อสอบ</td></tr>`;
         return;
       }
 
-      candidates.forEach((c, i) => {
+      submissions.forEach((c, i) => {
         const row = document.createElement("tr");
         
         let formattedTime = '-';
-        if (c.loginTime && c.loginTime !== '-') {
+        if (c.submissionTime && c.submissionTime !== '-') {
           try {
-            formattedTime = new Date(c.loginTime).toLocaleString('th-TH', { 
+            formattedTime = new Date(c.submissionTime).toLocaleString('th-TH', { 
               year: 'numeric', month: 'short', day: 'numeric', 
               hour: '2-digit', minute: '2-digit', second: '2-digit' 
             });
           } catch(e) {
-            formattedTime = c.loginTime;
+            formattedTime = c.submissionTime;
           }
         }
 
@@ -380,7 +256,7 @@
 
         const subjCount = c.subjectiveTests.length;
         rowHTML += `
-          <td style="text-align:center;"><span class="badge-score" style="background:#f3e8ff; color:#6b21a8;">ส่ง ${subjCount} ชุด</span></td>
+          <td style="text-align:center;"><span class="badge-score" style="background:#f3e8ff; color:#6b21a8;">${subjCount > 0 ? 'ส่งแล้ว' : '-'}</span></td>
           <td style="text-align:center;">
             <button class="btn-action" onclick='openCandidateReport(${JSON.stringify(c)})'>🔍 รายงาน & AI</button>
           </td>
@@ -407,12 +283,13 @@
       }
     }
 
+    // กำหนดให้เป็น Window Function เพื่อให้ปุ่มในตารางเรียกใช้ได้
     window.openCandidateReport = async function(c) {
       const modalContent = document.getElementById("modalReportContent");
 
       let quizRows = "";
       if (Object.keys(c.quizScores).length === 0) {
-        quizRows = `<tr><td colspan="4" style="text-align:center; color:#888;">ยังไม่มีประวัติการทำแบบทดสอบปรนัย</td></tr>`;
+        quizRows = `<tr><td colspan="4" style="text-align:center; color:#888;">ไม่มีประวัติการทำแบบทดสอบปรนัยในรอบนี้</td></tr>`;
       } else {
         MODULE_LIST.forEach(m => {
           const data = c.quizScores[m.key];
@@ -434,7 +311,7 @@
 
       let subjectiveHTML = "";
       if (c.subjectiveTests.length === 0) {
-        subjectiveHTML = `<p style="color:#888; font-style:italic;">ยังไม่มีประวัติการทำข้อสอบอัตนัย</p>`;
+        subjectiveHTML = `<p style="color:#888; font-style:italic;">ไม่มีประวัติการทำข้อสอบอัตนัยในรอบนี้</p>`;
       } else {
         c.subjectiveTests.forEach((sub, subIdx) => {
           let ansList = "";
@@ -446,18 +323,18 @@
               return `<div style="margin-bottom:6px; font-size:0.85rem;"><strong style="color:#007acc;">${qText}</strong><br><span style="color:#333;">ตอบ: ${val || '-'}</span></div>`;
             }).join("");
           }
-          subjectiveHTML += `<div style="background:#f8fafc; border:1px solid #cbd5e1; padding:10px; border-radius:6px; margin-bottom:8px;"><strong style="font-size:0.9rem; color:#1e293b;">ชุดที่ส่งครั้งที่ ${subIdx + 1} (${new Date(sub.date).toLocaleDateString('th-TH')})</strong><div style="margin-top:6px;">${ansList}</div></div>`;
+          subjectiveHTML += `<div style="background:#f8fafc; border:1px solid #cbd5e1; padding:10px; border-radius:6px; margin-bottom:8px;"><strong style="font-size:0.9rem; color:#1e293b;">รอบเวลา: ${new Date(sub.date).toLocaleString('th-TH')}</strong><div style="margin-top:6px;">${ansList}</div></div>`;
         });
       }
 
-      let formattedLoginTime = c.loginTime && c.loginTime !== '-' ? new Date(c.loginTime).toLocaleString('th-TH') : '-';
+      let formattedLoginTime = c.submissionTime && c.submissionTime !== '-' ? new Date(c.submissionTime).toLocaleString('th-TH') : '-';
 
       modalContent.innerHTML = `
         <div style="background:#ffffff; padding:25px; color:#333; font-family:'Sarabun', sans-serif;" id="printableCard">
           <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom: 2px solid #007acc; padding-bottom: 15px; margin-bottom: 20px;">
             <div>
-              <h2 style="color:#007acc; margin:0; font-size:22px;">📊 รายงานผลการประเมินรายบุคคล & AI Analytics</h2>
-              <p style="margin:5px 0 0 0; color:#64748b; font-size:13px;">พนักงาน: ${c.name} | แผนก: ${c.department} | เวลาเข้าสู่ระบบ: ${formattedLoginTime}</p>
+              <h2 style="color:#007acc; margin:0; font-size:22px;">📊 รายงานผลการประเมินรายรอบ & AI Analytics</h2>
+              <p style="margin:5px 0 0 0; color:#64748b; font-size:13px;">พนักงาน: ${c.name} | แผนก: ${c.department} | เวลาทำแบบทดสอบ: ${formattedLoginTime}</p>
               <div style="margin-top:8px;">
                 <span class="badge-exp">ประสบการณ์ในหน้าที่: ${c.experience}</span>
               </div>
@@ -490,7 +367,7 @@
             </div>
           </div>
 
-          <h3 style="color:#2c3e50; font-size:16px; margin-top:20px; margin-bottom:10px; border-left: 4px solid #007acc; padding-left: 8px;">📋 คะแนนสรุปแบบทดสอบปรนัย (รายวิชา 11 ชุด)</h3>
+          <h3 style="color:#2c3e50; font-size:16px; margin-top:20px; margin-bottom:10px; border-left: 4px solid #007acc; padding-left: 8px;">📋 คะแนนสรุปแบบทดสอบปรนัยรอบนี้</h3>
           <table style="width:100%; border-collapse:collapse; margin-bottom:20px; font-size:0.9rem;">
             <thead>
               <tr style="background:#007acc; color:white;">
@@ -503,7 +380,7 @@
             <tbody>${quizRows}</tbody>
           </table>
 
-          <h3 style="color:#2c3e50; font-size:16px; margin-top:20px; margin-bottom:10px; border-left: 4px solid #007acc; padding-left: 8px;">✍️ รายละเอียดข้อสอบอัตนัยและคำตอบของพนักงาน</h3>
+          <h3 style="color:#2c3e50; font-size:16px; margin-top:20px; margin-bottom:10px; border-left: 4px solid #007acc; padding-left: 8px;">✍️ รายละเอียดข้อสอบอัตนัยรอบนี้</h3>
           ${subjectiveHTML}
         </div>
       `;
@@ -568,7 +445,7 @@
 
       const opt = {
         margin: [0.3, 0.3, 0.3, 0.3],
-        filename: `รายงานรอบด้าน_${name}.pdf`,
+        filename: `รายงานรอบการทำข้อสอบ_${name}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, logging: true },
         jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
@@ -585,7 +462,7 @@
       });
     }
 
-    function renderChart(candidates) {
+    function renderChart(submissions) {
       const ctx = document.getElementById("scoreChart").getContext("2d");
       const moduleSummary = {};
 
@@ -593,8 +470,8 @@
         moduleSummary[m.label] = { sum: 0, count: 0 };
       });
 
-      candidates.forEach(c => {
-        for (const [modKey, data] of Object.entries(c.quizScores)) {
+      submissions.forEach(s => {
+        for (const [modKey, data] of Object.entries(s.quizScores)) {
           const matchObj = MODULE_LIST.find(m => m.key === modKey);
           if (matchObj) {
             moduleSummary[matchObj.label].sum += data.pct;
@@ -616,7 +493,7 @@
         data: {
           labels: labels,
           datasets: [{
-            label: "คะแนนเฉลี่ยรวมภาพรวม (%) แยกตามรายวิชา",
+            label: "คะแนนเฉลี่ยรวมภาพรวมทุกรอบ (%) แยกตามรายวิชา",
             data: averages,
             backgroundColor: "rgba(0, 122, 204, 0.75)",
             borderColor: "rgba(0, 122, 204, 1)",
@@ -633,21 +510,20 @@
     }
 
     function downloadComprehensiveExcel() {
-      const candidates = Object.values(globalCandidateMap);
-      if (candidates.length === 0) {
-        alert("ไม่พบข้อมูลพนักงานสำหรับส่งออก Excel");
+      if (globalSubmissionsArray.length === 0) {
+        alert("ไม่พบข้อมูลสำหรับส่งออก Excel");
         return;
       }
 
       const excelData = [];
-      candidates.forEach((c, index) => {
+      globalSubmissionsArray.forEach((c, index) => {
         const rowObj = {
           "ลำดับ": index + 1,
           "ชื่อ-นามสกุล": c.name,
           "แผนก": c.department,
           "ประสบการณ์ในหน้าที่": c.experience,
-          "เวลาเข้าสู่ระบบ": c.loginTime && c.loginTime !== '-' ? new Date(c.loginTime).toLocaleString('th-TH') : "-",
-          "จำนวนชุดอัตนัยที่ส่ง": c.subjectiveTests.length
+          "เวลาทำข้อสอบ": c.submissionTime && c.submissionTime !== '-' ? new Date(c.submissionTime).toLocaleString('th-TH') : "-",
+          "ประเภทการส่ง": c.type
         };
 
         MODULE_LIST.forEach(m => {
@@ -655,17 +531,13 @@
           rowObj[m.label] = testData ? `${testData.pct}% (${testData.score}/${testData.total})` : "-";
         });
 
-        rowObj["จุดแข็ง (AI Strengths)"] = document.getElementById("inputStrengths")?.value || "-";
-        rowObj["จุดที่ควรพัฒนา (AI Weaknesses)"] = document.getElementById("inputWeaknesses")?.value || "-";
-        rowObj["แนวทางโค้ชชิ่ง (Action Plan)"] = document.getElementById("inputRecommendations")?.value || "-";
-
         excelData.push(rowObj);
       });
 
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.json_to_sheet(excelData);
-      XLSX.utils.book_append_sheet(wb, ws, "Matrix_Evaluation_Summary");
-      XLSX.writeFile(wb, "Comprehensive_Matrix_Evaluation_Detail.xlsx");
+      XLSX.utils.book_append_sheet(wb, ws, "Submissions_Summary");
+      XLSX.writeFile(wb, "Comprehensive_Submissions_Report.xlsx");
     }
 
     window.addEventListener("DOMContentLoaded", () => {
@@ -696,7 +568,6 @@
     .btn-action:hover { background: #0369a1; }
     .chart-container { background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 25px; }
     
-    /* 📌 ส่วนตาราง Matrix บังคับ Scrollbar และ Sticky ให้ทำงานอย่างเด็ดขาด */
     .table-responsive { 
       width: 100% !important; 
       max-height: 550px !important; 
@@ -727,17 +598,16 @@
     
     th:last-child, td:last-child { border-right: none !important; }
     
-    /* 📌 ตรึงหัวตาราง (Sticky Header) */
     th { 
       background: #007acc !important; 
       color: white !important; 
       font-weight: 600 !important; 
       white-space: nowrap !important; 
       position: sticky !important; 
-      top: 0 !important; zIndex: 10 !important; 
+      top: 0 !important; 
+      z-index: 10 !important; 
     }
 
-    /* 📌 ตรึงคอลัมน์ซ้ายสุด (1. ลำดับ, 2. ชื่อพนักงาน, 3. แผนก, 4. ประสบการณ์, 5. เวลาเข้าสู่ระบบ) แบบกำหนดระยะห่างถูกต้อง */
     .col-sticky-1 {
       position: sticky !important;
       left: 0 !important;
@@ -773,11 +643,10 @@
       left: 475px !important;
       z-index: 5 !important;
       background-color: #f8fafc !important;
-      min-width: 160px !important;
+      min-width: 175px !important;
       text-align: center !important;
     }
 
-    /* 📌 จุดตัดหัวตารางและคอลัมน์ซ้ายสุด ให้อยู่ชั้นบนสุดเสมอ */
     th.col-sticky-1 { z-index: 20 !important; background-color: #007acc !important; }
     th.col-sticky-2 { z-index: 20 !important; background-color: #007acc !important; }
     th.col-sticky-3 { z-index: 20 !important; background-color: #007acc !important; }
@@ -809,7 +678,7 @@
 </head>
 <body>
   <div id="dashboard">
-    <h2>🎯 แดชบอร์ดสรุปผลการประเมินรายวิชาแบบเมทริกซ์ (Matrix Evaluation 11 ชุด)</h2>
+    <h2>🎯 แดชบอร์ดสรุปผลการประเมินแยกตามรอบการทำข้อสอบ</h2>
     
     <div class="search-box">
       <input type="text" id="searchInput" placeholder="ค้นหาด้วยชื่อพนักงาน, แผนก หรือประสบการณ์">
@@ -828,11 +697,11 @@
       </div>
       <div class="kpi-card">
         <div class="number" id="totalQuizzes">0</div>
-        <div class="label">ชุดปรนัยที่ทำรวม</div>
+        <div class="label">รอบการทำปรนัยรวม</div>
       </div>
       <div class="kpi-card">
         <div class="number" id="totalSubjective">0</div>
-        <div class="label">ชุดอัตนัยที่ส่งรวม</div>
+        <div class="label">รอบการส่งอัตนัยรวม</div>
       </div>
       <div class="kpi-card">
         <div class="number" id="avgScore">0%</div>
@@ -844,7 +713,7 @@
       <canvas id="scoreChart" height="90"></canvas>
     </div>
 
-    <h3>📋 ตารางเมทริกซ์ผลการสอบรายบุคคล (แยกตามชุดแบบทดสอบทั้ง 11 ชุด)</h3>
+    <h3>📋 ตารางประวัติผลการสอบแยกตามรายรอบ (Submission History)</h3>
     <div class="table-responsive">
       <table id="matrixTable">
         <thead id="matrixTableHead"></thead>
