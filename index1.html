@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ลงทะเบียนเข้าสู่ระบบและเลือกแบบทดสอบโปรดัก</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(-45deg, #6ec6ff, #b388ff, #81d4fa, #ce93d8);
+      background-size: 400% 400%;
+      animation: gradientBG 15s ease infinite;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    @keyframes gradientBG {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    .card {
+      border-radius: 1rem;
+      animation: fadeInUp 0.8s ease;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .form-control:focus, .form-select:focus {
+      box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    }
+
+    .btn-success {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .btn-success:hover {
+      transform: scale(1.02);
+      box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+    }
+
+    .dept-radio-group .btn-check:checked + .btn {
+      background-color: #0d6efd;
+      color: white;
+      border-color: #0d6efd;
+      box-shadow: 0 0 8px rgba(13, 110, 253, 0.5);
+    }
+  </style>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
+    const supabaseUrl = 'https://wzwyotzzxycqfwercakh.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno';
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    function showMessage(text, isError = false) {
+      const messageBox = document.getElementById('messageBox');
+      messageBox.textContent = text;
+      messageBox.style.display = 'block';
+      messageBox.className = isError ? 'alert alert-danger mt-3 mb-0' : 'alert alert-success mt-3 mb-0';
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const form = document.getElementById('registerForm');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const name = document.getElementById('name').value.trim();
+        const empCode = document.getElementById('empCode').value.trim();
+        const email = document.getElementById('email').value.trim().toLowerCase();
+        const experience = document.getElementById('experience').value;
+        
+        const selectedDept = document.querySelector('input[name="department"]:checked');
+        const department = selectedDept ? selectedDept.value : '';
+
+        const quizTopicSelect = document.getElementById('quizTopic');
+        const selectedQuizFile = quizTopicSelect.value;
+
+        if (!email || !experience || !department || !selectedQuizFile) {
+          showMessage('กรุณากรอกและเลือกข้อมูลให้ครบถ้วนทุกช่อง', true);
+          return;
+        }
+
+        showMessage('กำลังบันทึกข้อมูลและเวลา...', false);
+
+        try {
+          // 1. สร้างตัวแปรเก็บเวลาปัจจุบันในรูปแบบมาตรฐาน
+          const loginTime = new Date().toISOString();
+
+          // 2. บันทึกข้อมูลและเวลาลงใน Session Storage
+          sessionStorage.setItem('user_email', email);
+          sessionStorage.setItem('user_name', name);
+          sessionStorage.setItem('emp_code', empCode);
+          sessionStorage.setItem('department', department);
+          sessionStorage.setItem('user_experience', experience);
+          sessionStorage.setItem('login_time', loginTime); // <-- บันทึกเวลา
+
+          // 3. ตรวจสอบและบันทึกลงตาราง users ใน Supabase พร้อมเวลา (login_time)
+          const { data: userData, error: fetchError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', email)
+            .maybeSingle();
+
+          if (fetchError) console.error('Error fetching user:', fetchError);
+
+          if (userData) {
+            await supabase
+              .from('users')
+              .update({ 
+                full_name: name, 
+                emp_code: empCode, 
+                department: department, 
+                experience: experience,
+                login_time: loginTime // อัปเดตเวลาเข้าสู่ระบบล่าสุด
+              })
+              .eq('email', email);
+          } else {
+            await supabase
+              .from('users')
+              .insert([{ 
+                email, 
+                full_name: name, 
+                emp_code: empCode, 
+                department, 
+                experience,
+                login_time: loginTime // บันทึกเวลาเข้าสู่ระบบครั้งแรก
+              }]);
+          }
+
+          showMessage('บันทึกข้อมูลเรียบร้อย! กำลังพาเข้าสู่แบบทดสอบ...', false);
+
+          // 4. พาไปยังหน้าแบบทดสอบพร้อมแนบตัวแปรเวลา (login_time) ไปทาง URL Parameters ด้วย
+          setTimeout(() => {
+            const redirectUrl = `${selectedQuizFile}?email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}&experience=${encodeURIComponent(experience)}&dept=${encodeURIComponent(department)}&login_time=${encodeURIComponent(loginTime)}`;
+            window.location.href = redirectUrl;
+          }, 1200);
+
+        } catch (err) {
+          console.error('Unexpected error:', err);
+          showMessage(`เกิดข้อผิดพลาด: ${err.message}`, true);
+        }
+      });
+    });
+  </script>
+</head>
+<body>
+  <div class="container d-flex justify-content-center align-items-center min-vh-100 py-4">
+    <div class="card shadow-lg p-4" style="width: 100%; max-width: 550px;">
+      <h3 class="text-center mb-4 text-primary">
+        <i class="bi bi-person-badge-fill me-2"></i>ลงทะเบียนทำแบบทดสอบโปรดัก
+      </h3>
+      
+      <form id="registerForm">
+        <div class="mb-3">
+          <label for="name" class="form-label fw-bold">ชื่อ-นามสกุล:</label>
+          <input type="text" id="name" name="name" class="form-control" placeholder="กรอกชื่อ-นามสกุล" required>
+        </div>
+
+        <div class="mb-3">
+          <label for="empCode" class="form-label fw-bold">รหัสพนักงาน:</label>
+          <input type="text" id="empCode" name="empCode" class="form-control" placeholder="กรอกรหัสพนักงาน" required>
+        </div>
+
+        <div class="mb-3">
+          <label for="email" class="form-label fw-bold">อีเมล:</label>
+          <input type="email" id="email" name="email" class="form-control" placeholder="name@example.com" required>
+        </div>
+
+        <div class="mb-3">
+          <label for="experience" class="form-label fw-bold">ประสบการณ์ทำงาน:</label>
+          <select id="experience" name="experience" class="form-select" required>
+            <option value="" selected disabled>-- เลือกประสบการณ์ --</option>
+            <option value="ไม่มีประสบการณ์">ไม่มีประสบการณ์</option>
+            <option value="น้อยกว่า 1 ปี">น้อยกว่า 1 ปี</option>
+            <option value="1 - 3 ปี">1 - 3 ปี</option>
+            <option value="3 - 5 ปี">3 - 5 ปี</option>
+            <option value="มากกว่า 5 ปี">มากกว่า 5 ปี</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-bold d-block">เลือกแผนก:</label>
+          <div class="btn-group dept-radio-group w-100" role="group">
+            <input type="radio" class="btn-check" name="department" id="deptAYCAP" value="AYCAP" required>
+            <label class="btn btn-outline-primary" for="deptAYCAP">AYCAP</label>
+
+            <input type="radio" class="btn-check" name="department" id="deptTTB" value="TTB">
+            <label class="btn btn-outline-primary" for="deptTTB">TTB</label>
+
+            <input type="radio" class="btn-check" name="department" id="deptUOB" value="UOB">
+            <label class="btn btn-outline-primary" for="deptUOB">UOB</label>
+
+            <input type="radio" class="btn-check" name="department" id="deptOnline" value="Online">
+            <label class="btn btn-outline-primary" for="deptOnline">Online</label>
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <label for="quizTopic" class="form-label fw-bold">เลือกหัวข้อแบบทดสอบ:</label>
+          <select id="quizTopic" name="quizTopic" class="form-select" required>
+            <option value="" selected disabled>-- กรุณาเลือกหัวข้อแบบทดสอบ --</option>
+            <option value="index1.html">1. แบบทดสอบ PRUgreat return plus 20/10</option>
+            <option value="index2.html">2. แบบทดสอบ SuperSmartSave 20/9</option>
+            <option value="index3.html">3. แบบทดสอบ PRUClick Savings Plus 20/9</option>
+            <option value="index4.html">4. แบบทดสอบ PRUMhao Mhao Double Sure</option>
+            <option value="index5.html">5. แบบทดสอบ PRU Healthy Plus</option>
+            <option value="index6.html">6. แบบทดสอบ Compliance</option>
+            <option value="index7.html">7. แบบทดสอบ Underwriting</option>
+            <option value="index8.html">8. แบบทดสอบ FATCA & CRS</option>
+            <option value="index9.html">9. แบบทดสอบ QC Matrix</option>
+            <option value="index10.html">10. แบบทดสอบ Salesforce </option>
+            <option value="index11.html">11. แบบทดสอบ Copayment</option>
+            <option value="index12.html">12. แบบทดสอบ ความรู้เกี่ยวกับประกันชีวิต</option>
+          </select>
+        </div>
+
+        <button type="submit" class="btn btn-success w-100 py-2 fs-6 fw-bold shadow-sm">
+          <i class="bi bi-box-arrow-in-right me-2"></i>เข้าสู่ระบบและเริ่มทำแบบทดสอบ
+        </button>
+      </form>
+
+      <div id="messageBox" style="display:none;" class="mt-3"></div>
+    </div>
+  </div>
+</body>
+</html>
