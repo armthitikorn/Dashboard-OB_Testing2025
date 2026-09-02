@@ -186,50 +186,99 @@
                 pct: pct,
                 passed: pct >= 80,
                 date: r.created_at
-              };
-            }
-          }
+    async function fetchData() {
+      const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
+      const dateFilter = document.getElementById("dateInput").value.trim();
+
+      try {
+        const { data: users } = await supabase.from("users").select("*");
+        const { data: quizResults } = await supabase.from("quiz_results").select("*").order('created_at', { ascending: false });
+        const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*").order('created_at', { ascending: false });
+
+        const userMap = {};
+        (users || []).forEach(u => {
+          if (u.email) userMap[u.email.toLowerCase().trim()] = u;
         });
 
-        // 3. เติมข้อมูลข้อสอบอัตนัย (subjective_answers)
+        globalSubmissionsArray = [];
+
+        // 1. ประมวลผลจาก quiz_results (แยกแต่ละรอบการส่งข้อสอบ)
+        (quizResults || []).forEach(r => {
+          const createdDate = r.created_at ? r.created_at.split('T')[0] : '';
+          if (dateFilter && createdDate !== dateFilter) return;
+
+          const emailKey = (r.user_email || r.email || '').toLowerCase().trim();
+          const matchedUser = userMap[emailKey];
+
+          let name = r.name && r.name !== 'EMPTY' && r.name.trim() !== '' ? r.name : (matchedUser ? matchedUser.full_name : (emailKey || 'ไม่ระบุชื่อ'));
+          let department = matchedUser && (matchedUser.department || matchedUser.dept) ? (matchedUser.department || matchedUser.dept) : (r.department || r.dept || 'ไม่ระบุแผนก');
+          let experience = r.experience || (matchedUser ? matchedUser.experience : 'ไม่ระบุ');
+          let submissionTime = r.created_at || (matchedUser ? matchedUser.login_time : '-');
+
+          if (keyword && !name.toLowerCase().includes(keyword) && !department.toLowerCase().includes(keyword)) return;
+
+          const modKey = matchModuleKey(r.quiz_set);
+          const quizScores = {};
+          if (modKey) {
+            const totalQ = r.total_questions || 10;
+            const pct = Math.round(((r.score || 0) / totalQ) * 100);
+            quizScores[modKey] = {
+              score: r.score,
+              total: totalQ,
+              pct: pct,
+              passed: pct >= 80,
+              date: r.created_at
+            };
+          }
+
+          globalSubmissionsArray.push({
+            id: r.id || Math.random(),
+            type: 'quiz',
+            name: name,
+            department: department,
+            experience: experience,
+            email: emailKey,
+            submissionTime: submissionTime,
+            quizScores: quizScores,
+            subjectiveTests: []
+          });
+        });
+
+        // 2. ประมวลผลจาก subjective_answers (แยกแต่ละรอบการส่งอัตนัย)
         (subjectiveAnswers || []).forEach(r => {
           const createdDate = r.created_at ? r.created_at.split('T')[0] : '';
           if (dateFilter && createdDate !== dateFilter) return;
 
-          const userInfo = resolveUser(r);
-          if (keyword && !userInfo.name.toLowerCase().includes(keyword) && !userInfo.department.toLowerCase().includes(keyword) && !userInfo.experience.toLowerCase().includes(keyword)) {
-            return;
-          }
+          const emailKey = (r.user_email || r.email || '').toLowerCase().trim();
+          const matchedUser = userMap[emailKey];
 
-          const key = userInfo.name;
-          if (!globalCandidateMap[key]) {
-            globalCandidateMap[key] = {
-              name: userInfo.name,
-              department: userInfo.department,
-              experience: userInfo.experience,
-              email: userInfo.email,
-              loginTime: userInfo.loginTime,
-              quizScores: {},
-              subjectiveTests: []
-            };
-          } else {
-            if (globalCandidateMap[key].department === 'ไม่ระบุแผนก' && userInfo.department !== 'ไม่ระบุแผนก') {
-              globalCandidateMap[key].department = userInfo.department;
-            }
-          }
+          let name = r.name && r.name !== 'EMPTY' && r.name.trim() !== '' ? r.name : (matchedUser ? matchedUser.full_name : (emailKey || 'ไม่ระบุชื่อ'));
+          let department = matchedUser && (matchedUser.department || matchedUser.dept) ? (matchedUser.department || matchedUser.dept) : (r.department || r.dept || 'ไม่ระบุแผนก');
+          let experience = r.experience || (matchedUser ? matchedUser.experience : 'ไม่ระบุ');
+          let submissionTime = r.created_at || (matchedUser ? matchedUser.login_time : '-');
 
-          globalCandidateMap[key].subjectiveTests.push({
-            answers: r.answers,
-            ai_analysis: r.ai_analysis,
-            date: r.created_at
+          if (keyword && !name.toLowerCase().includes(keyword) && !department.toLowerCase().includes(keyword)) return;
+
+          globalSubmissionsArray.push({
+            id: r.id || Math.random(),
+            type: 'subjective',
+            name: name,
+            department: department,
+            experience: experience,
+            email: emailKey,
+            submissionTime: submissionTime,
+            quizScores: {},
+            subjectiveTests: [{
+              answers: r.answers,
+              ai_analysis: r.ai_analysis,
+              date: r.created_at
+            }]
           });
         });
 
-        const candidatesArray = Object.values(globalCandidateMap);
-
-        renderSummaryStats(candidatesArray);
-        renderMatrixTable(candidatesArray);
-        renderChart(candidatesArray);
+        renderSummaryStats(globalSubmissionsArray);
+        renderMatrixTable(globalSubmissionsArray);
+        renderChart(globalSubmissionsArray);
 
       } catch (err) {
         console.error("Fetch Data Error:", err);
