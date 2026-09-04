@@ -405,62 +405,92 @@
         btn.innerText = "🤖 ให้ AI วิเคราะห์เชิงลึกอีกครั้ง";
       };
 
-      document.getElementById("downloadIndividualPDFBtn").onclick = function() {
-        downloadPDFReport(c.name);
-      };
-    };
+document.getElementById("downloadIndividualPDFBtn").onclick = function() {
+    downloadPDFReport(c.name); // ตรวจสอบตัวแปร c.name ให้แน่ใจว่าถูกประกาศไว้ใน Scope นี้นะครับ
+};
 
-    window.closeModal = function() {
-      document.getElementById("individualModal").style.display = "none";
-    };
+window.closeModal = function() {
+    document.getElementById("individualModal").style.display = "none";
+};
 
-    function downloadPDFReport(name) {
-      const btn = document.getElementById("downloadIndividualPDFBtn");
-      btn.disabled = true;
-      btn.innerText = "⏳ กำลังสร้าง PDF...";
+function downloadPDFReport(name) {
+    const btn = document.getElementById("downloadIndividualPDFBtn");
+    btn.disabled = true;
+    btn.innerText = "⏳ กำลังสร้าง PDF...";
 
-      const strengthsVal = document.getElementById("inputStrengths").value.trim();
-      const weaknessesVal = document.getElementById("inputWeaknesses").value.trim();
-      const recsVal = document.getElementById("inputRecommendations").value.trim();
+    const strengthsVal = document.getElementById("inputStrengths").value.trim();
+    const weaknessesVal = document.getElementById("inputWeaknesses").value.trim();
+    const recsVal = document.getElementById("inputRecommendations").value.trim();
 
-      const strengthsList = strengthsVal ? strengthsVal.split('\n').filter(s => s.trim() !== '').map(s => `<li>${s.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
-      const weaknessesList = weaknessesVal ? weaknessesVal.split('\n').filter(w => w.trim() !== '').map(w => `<li>${w.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
-      const recsList = recsVal ? recsVal.split('\n').filter(r => r.trim() !== '').map(r => `<li>${r.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
+    const strengthsList = strengthsVal ? strengthsVal.split('\n').filter(s => s.trim() !== '').map(s => `<li>${s.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
+    const weaknessesList = weaknessesVal ? weaknessesVal.split('\n').filter(w => w.trim() !== '').map(w => `<li>${w.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
+    const recsList = recsVal ? recsVal.split('\n').filter(r => r.trim() !== '').map(r => `<li>${r.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
 
-      const originalElement = document.getElementById("printableCard");
-      if (!originalElement) {
+    const originalElement = document.getElementById("printableCard");
+    if (!originalElement) {
         alert("ไม่พบข้อมูลสำหรับพิมพ์รายงาน");
         btn.disabled = false;
         btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
         return;
-      }
+    }
 
-      const element = originalElement.cloneNode(true);
-      const aiBtn = element.querySelector('#aiAnalyzeBtn');
-      if (aiBtn) aiBtn.remove();
+    // 1. โคลน Element
+    const element = originalElement.cloneNode(true);
+    
+    // 2. ลบปุ่ม AI
+    const aiBtn = element.querySelector('#aiAnalyzeBtn');
+    if (aiBtn) aiBtn.remove();
 
-      element.querySelector('.swot-card.strength').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${strengthsList}</ul>`;
-      element.querySelector('.swot-card.weakness').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${weaknessesList}</ul>`;
-      element.querySelector('.swot-card.recommendation').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${recsList}</ul>`;
+    // 3. แทนที่ textarea ด้วย ul/li (เพิ่มการเช็คว่ามี textarea อยู่จริงไหมกันโค้ดพัง)
+    const strengthTextarea = element.querySelector('.swot-card.strength textarea');
+    if (strengthTextarea) strengthTextarea.outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${strengthsList}</ul>`;
+    
+    const weaknessTextarea = element.querySelector('.swot-card.weakness textarea');
+    if (weaknessTextarea) weaknessTextarea.outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${weaknessesList}</ul>`;
+    
+    const recTextarea = element.querySelector('.swot-card.recommendation textarea');
+    if (recTextarea) recTextarea.outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${recsList}</ul>`;
 
-      const opt = {
+    // 4. *** สร้าง Container ล่องหนเพื่อแปะลง DOM ก่อนปรินต์ ***
+    const hiddenContainer = document.createElement('div');
+    hiddenContainer.style.position = 'absolute';
+    hiddenContainer.style.left = '-9999px'; // ซ่อนไว้นอกจอภาพ
+    hiddenContainer.style.top = '-9999px';
+    // ล็อกความกว้างให้เท่ากับต้นฉบับ เพื่อไม่ให้ Layout เพี้ยนตอนปรินต์
+    hiddenContainer.style.width = originalElement.offsetWidth + 'px'; 
+    hiddenContainer.appendChild(element);
+    document.body.appendChild(hiddenContainer);
+
+    const opt = {
         margin: [0.3, 0.3, 0.3, 0.3],
         filename: `รายงานรอบการทำข้อสอบ_${name}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: true },
+        html2canvas: { 
+            scale: 2, 
+            useCORS: true, 
+            logging: false, // ปิด log ตอนใช้งานจริงจะได้ไม่รก Console
+            scrollY: 0 // ป้องกันปัญหาตัดหน้าผิดพลาดถ้าเลื่อนจออยู่
+        },
         jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-      };
+    };
 
-      html2pdf().set(opt).from(element).save().then(() => {
+    // 5. สั่งสร้าง PDF
+    html2pdf().set(opt).from(element).save().then(() => {
+        // ทำงานเสร็จ คืนค่าปุ่ม และลบกล่องล่องหนทิ้ง
         btn.disabled = false;
         btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
-      }).catch(err => {
+        document.body.removeChild(hiddenContainer);
+    }).catch(err => {
         console.error("PDF Export Error:", err);
         alert("เกิดข้อผิดพลาดในการดาวน์โหลด PDF");
         btn.disabled = false;
         btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
-      });
-    }
+        // ถ้า error ก็ต้องลบกล่องล่องหนทิ้งด้วย
+        if (document.body.contains(hiddenContainer)) {
+            document.body.removeChild(hiddenContainer);
+        }
+    });
+}
 
     function renderChart(submissions) {
       const ctx = document.getElementById("scoreChart").getContext("2d");
