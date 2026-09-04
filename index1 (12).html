@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>แดชบอร์ดสรุปผลการประเมินแยกตามรอบการทำข้อสอบ</title>
+  
+  <!-- Fonts & Libraries -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
+    // 📌 Supabase Configuration
+    const supabaseUrl = 'https://wzwyotzzxycqfwercakh.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno';
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // 📌 ประกาศตัวแปร Global เพื่อไม่ให้ข้อมูลหาย (จุดที่แก้ไข)
+    let globalSubmissionsArray = [];
+
+    const MODULE_LIST = [
+      { key: "PRUgreat", label: "PRUgreat return 20/10" },
+      { key: "SuperSmartSave", label: "SuperSmartSave 20/9" },
+      { key: "PRUClick", label: "PRUClick Savings 20/9" },
+      { key: "PRUMhao", label: "PRUMhao Mhao Double Sure" },
+      { key: "Healthy Plus", label: "PRU Healthy Plus" },
+      { key: "ฟอกเงิน", label: "ป้องกันการฟอกเงิน (AML)" },
+      { key: "Underwriting", label: "Underwriting" },
+      { key: "Copayment", label: "Copayment" },
+      { key: "FATCA", label: "FATCA & CRS" },
+      { key: "QC Matrix", label: "QC Matrix" },
+      { key: "Salesforce", label: "Salesforce" },
+      { key: "ความรู้เกี่ยวกับประกันชีวิต", label: "ความรู้เกี่ยวกับประกันชีวิต" },
+      { key: "ความกังวลของลูกค้า", label: "ความกังวลของลูกค้า" }
+    ];
+
+    const QUESTIONS_LIST = [
+      "คำถามอัตนัยข้อที่ 1 (ไม่สนใจประกันครับ/ค่ะ)",
+      "คำถามอัตนัยข้อที่ 2 (มีประกันอยู่แล้วหลายตัว?)",
+      "คำถามอัตนัยข้อที่ 3 (ไม่อยากเพิ่มภาระประกันอีก?)",
+      "คำถามอัตนัยข้อที่ 4 (ไม่อยากซ้ำซ้อนกับของเดิม?)",
+      "คำถามอัตนัยข้อที่ 5 (ตอนนี้ไม่สะดวกคุยครับ/ค่ะ)",
+      "คำถามอัตนัยข้อที่ 6 (มีเอกสารส่งให้ดูก่อนไหม?)",
+      "คำถามอัตนัยข้อที่ 7 (ขอปรึกษาที่บ้านก่อน?)",
+      "คำถามอัตนัยข้อที่ 8 (ยังไม่ตัดสินใจครับ?)",
+      "คำถามอัตนัยข้อที่ 9 (เบี้ยแพงไปไม่มีเงินจ่าย?)",
+      "คำถามอัตนัยข้อที่ 10 (ทำแล้วยกเลิกได้ไหม?)"
+    ];
+
+    function matchModuleKey(quizSetName) {
+      if (!quizSetName) return null;
+      for (const m of MODULE_LIST) {
+        if (quizSetName.includes(m.key)) return m.key;
+      }
+      return null;
+    }
+
+    async function fetchData() {
+      const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
+      const dateFilter = document.getElementById("dateInput").value.trim();
+
+      try {
+        const { data: users } = await supabase.from("users").select("*");
+        const { data: quizResults } = await supabase.from("quiz_results").select("*").order('created_at', { ascending: false });
+        const { data: subjectiveAnswers } = await supabase.from("subjective_answers").select("*").order('created_at', { ascending: false });
+
+        const userMap = {};
+        (users || []).forEach(u => {
+          if (u.email) userMap[u.email.toLowerCase().trim()] = u;
+        });
+
+        // ล้างค่า Array เพื่อเตรียมรับข้อมูลใหม่
+        globalSubmissionsArray = [];
+
+        // 1. ประมวลผลจาก quiz_results (แยกแต่ละรอบการส่งข้อสอบปรนัย)
+        (quizResults || []).forEach(r => {
+          const createdDate = r.created_at ? r.created_at.split('T')[0] : '';
+          if (dateFilter && createdDate !== dateFilter) return;
+
+          const emailKey = (r.user_email || r.email || '').toLowerCase().trim();
+          const matchedUser = userMap[emailKey];
+
+          let name = r.name && r.name !== 'EMPTY' && r.name.trim() !== '' ? r.name : (matchedUser ? matchedUser.full_name : (emailKey || 'ไม่ระบุชื่อ'));
+          let department = matchedUser && (matchedUser.department || matchedUser.dept) ? (matchedUser.department || matchedUser.dept) : (r.department || r.dept || 'ไม่ระบุแผนก');
+          let experience = r.experience || (matchedUser ? matchedUser.experience : 'ไม่ระบุ');
+          let submissionTime = r.created_at || (matchedUser ? matchedUser.login_time : '-');
+
+          if (keyword && !name.toLowerCase().includes(keyword) && !department.toLowerCase().includes(keyword)) return;
+
+          const modKey = matchModuleKey(r.quiz_set);
+          const quizScores = {};
+          if (modKey) {
+            const totalQ = r.total_questions || 10;
+            const pct = Math.round(((r.score || 0) / totalQ) * 100);
+            quizScores[modKey] = {
+              score: r.score,
+              total: totalQ,
+              pct: pct,
+              passed: pct >= 80,
+              date: r.created_at
+            };
+          }
+
+          globalSubmissionsArray.push({
+            id: r.id || Math.random(),
+            type: 'quiz',
+            name: name,
+            department: department,
+            experience: experience,
+            email: emailKey,
+            submissionTime: submissionTime,
+            quizScores: quizScores,
+            subjectiveTests: []
+          });
+        });
+
+        // 2. ประมวลผลจาก subjective_answers (แยกแต่ละรอบการส่งอัตนัย)
+        (subjectiveAnswers || []).forEach(r => {
+          const createdDate = r.created_at ? r.created_at.split('T')[0] : '';
+          if (dateFilter && createdDate !== dateFilter) return;
+
+          const emailKey = (r.user_email || r.email || '').toLowerCase().trim();
+          const matchedUser = userMap[emailKey];
+
+          let name = r.name && r.name !== 'EMPTY' && r.name.trim() !== '' ? r.name : (matchedUser ? matchedUser.full_name : (emailKey || 'ไม่ระบุชื่อ'));
+          let department = matchedUser && (matchedUser.department || matchedUser.dept) ? (matchedUser.department || matchedUser.dept) : (r.department || r.dept || 'ไม่ระบุแผนก');
+          let experience = r.experience || (matchedUser ? matchedUser.experience : 'ไม่ระบุ');
+          let submissionTime = r.created_at || (matchedUser ? matchedUser.login_time : '-');
+
+          if (keyword && !name.toLowerCase().includes(keyword) && !department.toLowerCase().includes(keyword)) return;
+
+          globalSubmissionsArray.push({
+            id: r.id || Math.random(),
+            type: 'subjective',
+            name: name,
+            department: department,
+            experience: experience,
+            email: emailKey,
+            submissionTime: submissionTime,
+            quizScores: {},
+            subjectiveTests: [{
+              answers: r.answers,
+              ai_analysis: r.ai_analysis,
+              date: r.created_at
+            }]
+          });
+        });
+
+        // เรียงลำดับข้อมูลจากใหม่ไปเก่า
+        globalSubmissionsArray.sort((a, b) => new Date(b.submissionTime) - new Date(a.submissionTime));
+
+        renderSummaryStats(globalSubmissionsArray);
+        renderMatrixTable(globalSubmissionsArray);
+        renderChart(globalSubmissionsArray);
+
+      } catch (err) {
+        console.error("Fetch Data Error:", err);
+      }
+    }
+
+    function renderSummaryStats(submissions) {
+      document.getElementById("totalCandidates").innerText = new Set(submissions.map(s => s.name)).size;
+      
+      let totalQuizzesCount = submissions.filter(s => Object.keys(s.quizScores).length > 0).length;
+      let totalSubjectiveCount = submissions.filter(s => s.subjectiveTests.length > 0).length;
+      let sumPct = 0;
+      let quizCountForAvg = 0;
+
+      submissions.forEach(s => {
+        Object.values(s.quizScores).forEach(q => {
+          sumPct += q.pct;
+          quizCountForAvg++;
+        });
+      });
+
+      document.getElementById("totalQuizzes").innerText = totalQuizzesCount;
+      document.getElementById("totalSubjective").innerText = totalSubjectiveCount;
+      document.getElementById("avgScore").innerText = quizCountForAvg > 0 ? (sumPct / quizCountForAvg).toFixed(1) + "%" : "0%";
+    }
+
+    function renderMatrixTable(submissions) {
+      const thead = document.getElementById("matrixTableHead");
+      const tbody = document.getElementById("matrixTableBody");
+      thead.innerHTML = "";
+      tbody.innerHTML = "";
+
+      let headerHTML = `
+        <tr>
+          <th class="col-sticky-1">#</th>
+          <th class="col-sticky-2">ชื่อพนักงาน</th>
+          <th class="col-sticky-3">แผนก</th>
+          <th class="col-sticky-4">ประสบการณ์</th>
+          <th class="col-sticky-5">เวลาที่ทำแบบทดสอบ</th>
+      `;
+      MODULE_LIST.forEach(m => {
+        headerHTML += `<th style="text-align:center; font-size:0.85rem; min-width:110px;">${m.label}</th>`;
+      });
+      headerHTML += `
+          <th style="text-align:center; min-width:90px;">อัตนัย</th>
+          <th style="text-align:center; min-width:110px;">จัดการ</th>
+        </tr>
+      `;
+      thead.innerHTML = headerHTML;
+
+      if (submissions.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="${MODULE_LIST.length + 7}" style="text-align:center; color:#888;">ไม่พบข้อมูลประวัติการทำข้อสอบ</td></tr>`;
+        return;
+      }
+
+      submissions.forEach((c, i) => {
+        const row = document.createElement("tr");
+        
+        let formattedTime = '-';
+        if (c.submissionTime && c.submissionTime !== '-') {
+          try {
+            formattedTime = new Date(c.submissionTime).toLocaleString('th-TH', { 
+              year: 'numeric', month: 'short', day: 'numeric', 
+              hour: '2-digit', minute: '2-digit', second: '2-digit' 
+            });
+          } catch(e) {
+            formattedTime = c.submissionTime;
+          }
+        }
+
+        let rowHTML = `
+          <td class="col-sticky-1">${i + 1}</td>
+          <td class="col-sticky-2"><strong>${c.name}</strong></td>
+          <td class="col-sticky-3"><span style="color:#0284c7; font-weight:500;">${c.department}</span></td>
+          <td class="col-sticky-4"><span class="badge-exp">${c.experience}</span></td>
+          <td class="col-sticky-5" style="white-space:nowrap; font-size:0.85rem; color:#475569;">${formattedTime}</td>
+        `;
+
+        MODULE_LIST.forEach(m => {
+          const testData = c.quizScores[m.key];
+          if (testData) {
+            const bg = testData.passed ? "#d1ffd1" : "#ffd1d1";
+            const color = testData.passed ? "#005900" : "#900";
+            rowHTML += `
+              <td style="text-align:center;">
+                <span style="background:${bg}; color:${color}; padding:4px 8px; border-radius:6px; font-weight:bold; font-size:0.85rem; display:inline-block;">
+                  ${testData.pct}%
+                </span>
+                <br><small style="color:#555;">(${testData.score}/${testData.total})</small>
+              </td>
+            `;
+          } else {
+            rowHTML += `<td style="text-align:center; color:#cbd5e1;">-</td>`;
+          }
+        });
+
+        const subjCount = c.subjectiveTests.length;
+        rowHTML += `
+          <td style="text-align:center;"><span class="badge-score" style="background:#f3e8ff; color:#6b21a8;">${subjCount > 0 ? 'ส่งแล้ว' : '-'}</span></td>
+          <td style="text-align:center;">
+            <button class="btn-action" onclick='openCandidateReport(${JSON.stringify(c)})'>🔍 รายงาน & AI</button>
+          </td>
+        `;
+
+        row.innerHTML = rowHTML;
+        tbody.appendChild(row);
+      });
+    }
+
+    async function evaluateCandidateWithVercelAPI(candidateData) {
+      try {
+        const response = await fetch('/api/analyze', {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ candidateData })
+        });
+        
+        if (!response.ok) throw new Error("ไม่สามารถเชื่อมต่อกับ Serverless Function บน Vercel ได้");
+        return await response.json();
+      } catch (err) {
+        console.error("Vercel API Error:", err);
+        return null;
+      }
+    }
+
+    // กำหนดให้เป็น Window Function เพื่อให้ปุ่มในตารางเรียกใช้ได้
+    window.openCandidateReport = async function(c) {
+      const modalContent = document.getElementById("modalReportContent");
+
+      let quizRows = "";
+      if (Object.keys(c.quizScores).length === 0) {
+        quizRows = `<tr><td colspan="4" style="text-align:center; color:#888;">ไม่มีประวัติการทำแบบทดสอบปรนัยในรอบนี้</td></tr>`;
+      } else {
+        MODULE_LIST.forEach(m => {
+          const data = c.quizScores[m.key];
+          if (data) {
+            const badge = data.passed 
+              ? `<span style="color:#005900; background:#d1ffd1; padding:2px 6px; border-radius:4px; font-weight:bold;">ผ่าน (>=80%)</span>`
+              : `<span style="color:#900; background:#ffd1d1; padding:2px 6px; border-radius:4px; font-weight:bold;">ไม่ผ่าน</span>`;
+            quizRows += `
+              <tr>
+                <td style="padding:6px 8px; border-bottom:1px solid #eee;">${m.label}</td>
+                <td style="padding:6px 8px; border-bottom:1px solid #eee; text-align:center;">${data.score} / ${data.total}</td>
+                <td style="padding:6px 8px; border-bottom:1px solid #eee; text-align:center;"><strong>${data.pct}%</strong></td>
+                <td style="padding:6px 8px; border-bottom:1px solid #eee; text-align:center;">${badge}</td>
+              </tr>
+            `;
+          }
+        });
+      }
+
+      let subjectiveHTML = "";
+      if (c.subjectiveTests.length === 0) {
+        subjectiveHTML = `<p style="color:#888; font-style:italic;">ไม่มีประวัติการทำข้อสอบอัตนัยในรอบนี้</p>`;
+      } else {
+        c.subjectiveTests.forEach((sub, subIdx) => {
+          let ansList = "";
+          const answers = sub.answers;
+          if (Array.isArray(answers)) {
+            ansList = answers.map((ansItem, qIdx) => {
+              const qText = QUESTIONS_LIST[qIdx] || `คำถามข้อที่ ${qIdx + 1}`;
+              const val = (typeof ansItem === 'object' && ansItem !== null) ? (ansItem.answer || ansItem.value || JSON.stringify(ansItem)) : ansItem;
+              return `<div style="margin-bottom:6px; font-size:0.85rem;"><strong style="color:#007acc;">${qText}</strong><br><span style="color:#333;">ตอบ: ${val || '-'}</span></div>`;
+            }).join("");
+          }
+          subjectiveHTML += `<div style="background:#f8fafc; border:1px solid #cbd5e1; padding:10px; border-radius:6px; margin-bottom:8px;"><strong style="font-size:0.9rem; color:#1e293b;">รอบเวลา: ${new Date(sub.date).toLocaleString('th-TH')}</strong><div style="margin-top:6px;">${ansList}</div></div>`;
+        });
+      }
+
+      let formattedLoginTime = c.submissionTime && c.submissionTime !== '-' ? new Date(c.submissionTime).toLocaleString('th-TH') : '-';
+
+      modalContent.innerHTML = `
+        <div style="background:#ffffff; padding:25px; color:#333; font-family:'Sarabun', sans-serif;" id="printableCard">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom: 2px solid #007acc; padding-bottom: 15px; margin-bottom: 20px;">
+            <div>
+              <h2 style="color:#007acc; margin:0; font-size:22px;">📊 รายงานผลการประเมินรายรอบ & AI Analytics</h2>
+              <p style="margin:5px 0 0 0; color:#64748b; font-size:13px;">พนักงาน: ${c.name} | แผนก: ${c.department} | เวลาทำแบบทดสอบ: ${formattedLoginTime}</p>
+              <div style="margin-top:8px;">
+                <span class="badge-exp">ประสบการณ์ในหน้าที่: ${c.experience}</span>
+              </div>
+            </div>
+            <div style="width: 100px; height: 120px; border: 2px dashed #cbd5e1; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f8fafc; color: #94a3b8; font-size: 11px; text-align: center; padding: 5px; flex-shrink: 0;" title="ช่องสำหรับติดรูปถ่ายพนักงาน">
+              <span>📷</span>
+              <span style="margin-top:4px;">ติดรูปถ่ายพนักงาน</span>
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="color:#2c3e50; font-size:16px; margin:0; border-left: 4px solid #007acc; padding-left: 8px;">🤖 ผลการวิเคราะห์เชิงลึกโดย AI</h3>
+            <button class="btn-action" id="aiAnalyzeBtn" style="background:#8b5cf6;" onclick="triggerAIAnalysis()">🤖 ให้ AI วิเคราะห์เชิงลึก</button>
+          </div>
+
+          <div id="aiAnalysisContainer" style="margin-bottom:20px;">
+            <div class="swot-grid">
+              <div class="swot-card strength">
+                <h4>💪 จุดแข็ง (Strengths)</h4>
+                <textarea id="inputStrengths" class="auto-textarea" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
+              </div>
+              <div class="swot-card weakness">
+                <h4>⚠️ จุดที่ควรพัฒนา (Weaknesses)</h4>
+                <textarea id="inputWeaknesses" class="auto-textarea" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
+              </div>
+            </div>
+            <div class="swot-card recommendation" style="margin-top:12px;">
+              <h4>💡 แนวทางการโค้ชชิ่งเฉพาะบุคคล (Action Plan)</h4>
+              <textarea id="inputRecommendations" class="auto-textarea" placeholder="กดปุ่ม 'ให้ AI วิเคราะห์เชิงลึก' หรือพิมพ์แก้ไขที่นี่..."></textarea>
+            </div>
+          </div>
+
+          <h3 style="color:#2c3e50; font-size:16px; margin-top:20px; margin-bottom:10px; border-left: 4px solid #007acc; padding-left: 8px;">📋 คะแนนสรุปแบบทดสอบปรนัยรอบนี้</h3>
+          <table style="width:100%; border-collapse:collapse; margin-bottom:20px; font-size:0.9rem;">
+            <thead>
+              <tr style="background:#007acc; color:white;">
+                <th style="padding:8px; text-align:left;">ชื่อชุดแบบทดสอบ</th>
+                <th style="padding:8px; text-align:center;">คะแนน</th>
+                <th style="padding:8px; text-align:center;">ร้อยละ</th>
+                <th style="padding:8px; text-align:center;">สถานะ</th>
+              </tr>
+            </thead>
+            <tbody>${quizRows}</tbody>
+          </table>
+
+          <h3 style="color:#2c3e50; font-size:16px; margin-top:20px; margin-bottom:10px; border-left: 4px solid #007acc; padding-left: 8px;">✍️ รายละเอียดข้อสอบอัตนัยรอบนี้</h3>
+          ${subjectiveHTML}
+        </div>
+      `;
+
+      document.getElementById("individualModal").style.display = "block";
+
+      window.triggerAIAnalysis = async function() {
+        const btn = document.getElementById("aiAnalyzeBtn");
+        btn.disabled = true;
+        btn.innerText = "⏳ AI กำลังวิเคราะห์ข้อมูลผ่าน Vercel...";
+        
+        const aiResult = await evaluateCandidateWithVercelAPI(c);
+        if (aiResult && aiResult.strengths) {
+          document.getElementById("inputStrengths").value = (aiResult.strengths || []).map(s => `• ${s}`).join('\n');
+          document.getElementById("inputWeaknesses").value = (aiResult.weaknesses || []).map(w => `• ${w}`).join('\n');
+          document.getElementById("inputRecommendations").value = (aiResult.recommendations || []).map(r => `• ${r}`).join('\n');
+          alert("AI วิเคราะห์ข้อมูลสำเร็จแล้วครับ!");
+        } else {
+          alert("เกิดข้อผิดพลาดในการเชื่อมต่อ AI Backend บน Vercel");
+        }
+        btn.disabled = false;
+        btn.innerText = "🤖 ให้ AI วิเคราะห์เชิงลึกอีกครั้ง";
+      };
+
+      document.getElementById("downloadIndividualPDFBtn").onclick = function() {
+        downloadPDFReport(c.name);
+      };
+    };
+
+    window.closeModal = function() {
+      document.getElementById("individualModal").style.display = "none";
+    };
+
+    function downloadPDFReport(name) {
+      const btn = document.getElementById("downloadIndividualPDFBtn");
+      btn.disabled = true;
+      btn.innerText = "⏳ กำลังสร้าง PDF...";
+
+      const strengthsVal = document.getElementById("inputStrengths").value.trim();
+      const weaknessesVal = document.getElementById("inputWeaknesses").value.trim();
+      const recsVal = document.getElementById("inputRecommendations").value.trim();
+
+      const strengthsList = strengthsVal ? strengthsVal.split('\n').filter(s => s.trim() !== '').map(s => `<li>${s.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
+      const weaknessesList = weaknessesVal ? weaknessesVal.split('\n').filter(w => w.trim() !== '').map(w => `<li>${w.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
+      const recsList = recsVal ? recsVal.split('\n').filter(r => r.trim() !== '').map(r => `<li>${r.replace(/^[•\-\*]\s*/, '')}</li>`).join('') : '<li>-</li>';
+
+      const originalElement = document.getElementById("printableCard");
+      if (!originalElement) {
+        alert("ไม่พบข้อมูลสำหรับพิมพ์รายงาน");
+        btn.disabled = false;
+        btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
+        return;
+      }
+
+      const element = originalElement.cloneNode(true);
+      const aiBtn = element.querySelector('#aiAnalyzeBtn');
+      if (aiBtn) aiBtn.remove();
+
+      element.querySelector('.swot-card.strength').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${strengthsList}</ul>`;
+      element.querySelector('.swot-card.weakness').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${weaknessesList}</ul>`;
+      element.querySelector('.swot-card.recommendation').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${recsList}</ul>`;
+
+      const opt = {
+        margin: [0.3, 0.3, 0.3, 0.3],
+        filename: `รายงานรอบการทำข้อสอบ_${name}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: true },
+        jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+      };
+
+      html2pdf().set(opt).from(element).save().then(() => {
+        btn.disabled = false;
+        btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
+      }).catch(err => {
+        console.error("PDF Export Error:", err);
+        alert("เกิดข้อผิดพลาดในการดาวน์โหลด PDF");
+        btn.disabled = false;
+        btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
+      });
+    }
+
+    function renderChart(submissions) {
+      const ctx = document.getElementById("scoreChart").getContext("2d");
+      const moduleSummary = {};
+
+      MODULE_LIST.forEach(m => {
+        moduleSummary[m.label] = { sum: 0, count: 0 };
+      });
+
+      submissions.forEach(s => {
+        for (const [modKey, data] of Object.entries(s.quizScores)) {
+          const matchObj = MODULE_LIST.find(m => m.key === modKey);
+          if (matchObj) {
+            moduleSummary[matchObj.label].sum += data.pct;
+            moduleSummary[matchObj.label].count += 1;
+          }
+        }
+      });
+
+      const labels = MODULE_LIST.map(m => m.label);
+      const averages = labels.map(l => {
+        const item = moduleSummary[l];
+        return item.count > 0 ? (item.sum / item.count).toFixed(1) : 0;
+      });
+
+      if (window.scoreChartInstance) window.scoreChartInstance.destroy();
+
+      window.scoreChartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: labels,
+          datasets: [{
+            label: "คะแนนเฉลี่ยรวมภาพรวมทุกรอบ (%) แยกตามรายวิชา",
+            data: averages,
+            backgroundColor: "rgba(0, 122, 204, 0.75)",
+            borderColor: "rgba(0, 122, 204, 1)",
+            borderWidth: 1,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { labels: { font: { family: 'Sarabun' } } } },
+          scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } }
+        }
+      });
+    }
+
+    function downloadComprehensiveExcel() {
+      if (globalSubmissionsArray.length === 0) {
+        alert("ไม่พบข้อมูลสำหรับส่งออก Excel");
+        return;
+      }
+
+      const excelData = [];
+      globalSubmissionsArray.forEach((c, index) => {
+        const rowObj = {
+          "ลำดับ": index + 1,
+          "ชื่อ-นามสกุล": c.name,
+          "แผนก": c.department,
+          "ประสบการณ์ในหน้าที่": c.experience,
+          "เวลาทำข้อสอบ": c.submissionTime && c.submissionTime !== '-' ? new Date(c.submissionTime).toLocaleString('th-TH') : "-",
+          "ประเภทการส่ง": c.type
+        };
+
+        MODULE_LIST.forEach(m => {
+          const testData = c.quizScores[m.key];
+          rowObj[m.label] = testData ? `${testData.pct}% (${testData.score}/${testData.total})` : "-";
+        });
+
+        excelData.push(rowObj);
+      });
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      XLSX.utils.book_append_sheet(wb, ws, "Submissions_Summary");
+      XLSX.writeFile(wb, "Comprehensive_Submissions_Report.xlsx");
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("searchBtn").addEventListener("click", fetchData);
+      document.getElementById("downloadExcelBtn").addEventListener("click", downloadComprehensiveExcel);
+      fetchData();
+    });
+  </script>
+
+  <style>
+    body { font-family: 'Sarabun', sans-serif; background: #f4f7f9; color: #333; margin: 0; padding: 30px 15px; }
+    #dashboard { max-width: 1400px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+    h2 { text-align: center; color: #007acc; font-weight: 700; margin-top: 0; margin-bottom: 25px; }
+    h3 { color: #2c3e50; font-size: 1.15rem; margin-top: 30px; margin-bottom: 15px; border-left: 4px solid #007acc; padding-left: 10px; }
+    .kpi-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
+    .kpi-card { background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; text-align: center; }
+    .kpi-card .number { font-size: 1.8rem; font-weight: 700; color: #007acc; }
+    .kpi-card .label { font-size: 0.85rem; color: #64748b; }
+    .search-box { display: flex; gap: 12px; margin-bottom: 20px; justify-content: center; flex-wrap: wrap; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+    input, button { padding: 10px 16px; font-size: 0.95rem; font-family: 'Sarabun', sans-serif; border-radius: 6px; border: 1px solid #cbd5e1; outline: none; }
+    input:focus { border-color: #007acc; box-shadow: 0 0 0 3px rgba(0, 122, 204, 0.15); }
+    button { background: #007acc; color: white; border: none; font-weight: 600; cursor: pointer; }
+    button:hover { background: #005999; }
+    .btn-group { display: flex; gap: 10px; justify-content: flex-end; margin-bottom: 20px; }
+    .btn-secondary { background: #22c55e; } .btn-secondary:hover { background: #16a34a; }
+    .btn-danger { background: #ef4444; } .btn-danger:hover { background: #dc2626; }
+    .btn-action { background: #0284c7; color: white; border: none; padding: 6px 12px; font-size: 0.85rem; border-radius: 4px; cursor: pointer; }
+    .btn-action:hover { background: #0369a1; }
+    .chart-container { background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 25px; }
+    
+    .table-responsive { 
+      width: 100% !important; 
+      max-height: 550px !important; 
+      overflow: auto !important;    
+      margin-bottom: 25px !important; 
+      border-radius: 8px !important; 
+      border: 1px solid #e2e8f0 !important; 
+      background: #fff !important; 
+      position: relative !important;
+    }
+    
+    table { 
+      width: 100% !important; 
+      border-collapse: separate !important; 
+      border-spacing: 0 !important; 
+      background: #fff !important; 
+    }
+    
+    th, td { 
+      padding: 10px 12px !important; 
+      text-align: left !important; 
+      border-bottom: 1px solid #e2e8f0 !important; 
+      border-right: 1px solid #f1f5f9 !important; 
+      font-size: 0.9rem !important; 
+      vertical-align: middle !important; 
+      background-color: #fff !important; 
+    }
+    
+    th:last-child, td:last-child { border-right: none !important; }
+    
+    th { 
+      background: #007acc !important; 
+      color: white !important; 
+      font-weight: 600 !important; 
+      white-space: nowrap !important; 
+      position: sticky !important; 
+      top: 0 !important; 
+      z-index: 10 !important; 
+    }
+
+    .col-sticky-1 {
+      position: sticky !important;
+      left: 0 !important;
+      z-index: 5 !important;
+      background-color: #f8fafc !important;
+      min-width: 45px !important;
+      text-align: center !important;
+    }
+    .col-sticky-2 {
+      position: sticky !important;
+      left: 45px !important;
+      z-index: 5 !important;
+      background-color: #f8fafc !important;
+      min-width: 180px !important;
+    }
+    .col-sticky-3 {
+      position: sticky !important;
+      left: 225px !important;
+      z-index: 5 !important;
+      background-color: #f8fafc !important;
+      min-width: 140px !important;
+    }
+    .col-sticky-4 {
+      position: sticky !important;
+      left: 365px !important;
+      z-index: 5 !important;
+      background-color: #f8fafc !important;
+      min-width: 110px !important;
+      text-align: center !important;
+    }
+    .col-sticky-5 {
+      position: sticky !important;
+      left: 475px !important;
+      z-index: 5 !important;
+      background-color: #f8fafc !important;
+      min-width: 175px !important;
+      text-align: center !important;
+    }
+
+    th.col-sticky-1 { z-index: 20 !important; background-color: #007acc !important; }
+    th.col-sticky-2 { z-index: 20 !important; background-color: #007acc !important; }
+    th.col-sticky-3 { z-index: 20 !important; background-color: #007acc !important; }
+    th.col-sticky-4 { z-index: 20 !important; background-color: #007acc !important; }
+    th.col-sticky-5 { z-index: 20 !important; background-color: #007acc !important; }
+
+    tr:hover td { background-color: #f1f5f9 !important; }
+
+    .badge-score { background-color: #e0f2fe; color: #0369a1; font-weight: bold; padding: 3px 8px; border-radius: 12px; display: inline-block; }
+    .badge-exp { background-color: #f1f5f9; color: #475569; font-weight: 600; padding: 3px 8px; border-radius: 6px; border: 1px solid #cbd5e1; display: inline-block; }
+    
+    .swot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    @media (max-width: 600px) { .swot-grid { grid-template-columns: 1fr; } }
+    .swot-card { padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .swot-card.strength { background-color: #f0fdf4; border-color: #bbf7d0; }
+    .swot-card.strength h4 { color: #166534; margin-top: 0; font-size: 0.95rem; }
+    .swot-card.weakness { background-color: #fef2f2; border-color: #fecaca; }
+    .swot-card.weakness h4 { color: #991b1b; margin-top: 0; font-size: 0.95rem; }
+    .swot-card.recommendation { background-color: #eff6ff; border-color: #bfdbfe; }
+    .swot-card.recommendation h4 { color: #1e40af; margin-top: 0; font-size: 0.95rem; }
+    .auto-textarea { width: 100%; min-height: 70px; padding: 8px; font-family: 'Sarabun', sans-serif; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; background: #fff; }
+    
+    .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); overflow-y: auto; }
+    .modal-content { background-color: #fff; margin: 30px auto; padding: 25px; border-radius: 12px; max-width: 950px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); position: relative; }
+    .close-btn { position: absolute; right: 20px; top: 15px; font-size: 28px; font-weight: bold; color: #aaa; cursor: pointer; }
+    .close-btn:hover { color: #333; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 15px; }
+  </style>
+</head>
+<body>
+  <div id="dashboard">
+    <h2>🎯 แดชบอร์ดสรุปผลการประเมินแยกตามรอบการทำข้อสอบ</h2>
+    
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="ค้นหาด้วยชื่อพนักงาน, แผนก หรือประสบการณ์">
+      <input type="date" id="dateInput">
+      <button id="searchBtn">ค้นหาข้อมูล</button>
+    </div>
+
+    <div class="btn-group">
+      <button id="downloadExcelBtn" class="btn-secondary">📥 ดาวน์โหลด Excel สรุปข้อมูลทั้งหมด</button>
+    </div>
+
+    <div class="kpi-container">
+      <div class="kpi-card">
+        <div class="number" id="totalCandidates">0</div>
+        <div class="label">จำนวนพนักงานทั้งหมด</div>
+      </div>
+      <div class="kpi-card">
+        <div class="number" id="totalQuizzes">0</div>
+        <div class="label">รอบการทำปรนัยรวม</div>
+      </div>
+      <div class="kpi-card">
+        <div class="number" id="totalSubjective">0</div>
+        <div class="label">รอบการส่งอัตนัยรวม</div>
+      </div>
+      <div class="kpi-card">
+        <div class="number" id="avgScore">0%</div>
+        <div class="label">คะแนนเฉลี่ยรวม</div>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <canvas id="scoreChart" height="90"></canvas>
+    </div>
+
+    <h3>📋 ตารางประวัติผลการสอบแยกตามรายรอบ (Submission History)</h3>
+    <div class="table-responsive">
+      <table id="matrixTable">
+        <thead id="matrixTableHead"></thead>
+        <tbody id="matrixTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal รายงานรายบุคคล -->
+  <div id="individualModal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeModal()">&times;</span>
+      <div class="modal-actions">
+        <button id="downloadIndividualPDFBtn" class="btn-danger">📄 ดาวน์โหลด PDF รายงานฉบับเต็ม</button>
+      </div>
+      <div id="modalReportContent"></div>
+    </div>
+  </div>
+</body>
+</html>
