@@ -411,6 +411,13 @@
     };
 
     window.closeModal = function() {
+    document.getElementById("downloadIndividualPDFBtn").onclick = function() {
+        const reportName = (typeof c !== "undefined" && c && c.name) ? c.name : "รายบุคคล";
+        downloadPDFReport(reportName);
+      };
+    };
+
+    window.closeModal = function() {
       document.getElementById("individualModal").style.display = "none";
     };
 
@@ -439,26 +446,44 @@
       const aiBtn = element.querySelector('#aiAnalyzeBtn');
       if (aiBtn) aiBtn.remove();
 
-      element.querySelector('.swot-card.strength').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${strengthsList}</ul>`;
-      element.querySelector('.swot-card.weakness').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${weaknessesList}</ul>`;
-      element.querySelector('.swot-card.recommendation').querySelector('textarea').outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${recsList}</ul>`;
+      const strengthTextarea = element.querySelector('.swot-card.strength textarea');
+      if (strengthTextarea) strengthTextarea.outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${strengthsList}</ul>`;
+      
+      const weaknessTextarea = element.querySelector('.swot-card.weakness textarea');
+      if (weaknessTextarea) weaknessTextarea.outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${weaknessesList}</ul>`;
+      
+      const recTextarea = element.querySelector('.swot-card.recommendation textarea');
+      if (recTextarea) recTextarea.outerHTML = `<ul style="margin:0; padding-left:20px; font-size:0.85rem;">${recsList}</ul>`;
+
+      const hiddenContainer = document.createElement('div');
+      hiddenContainer.style.position = 'absolute';
+      hiddenContainer.style.left = '0';
+      hiddenContainer.style.top = '0';
+      hiddenContainer.style.zIndex = '-9999';
+      hiddenContainer.style.width = originalElement.offsetWidth + 'px'; 
+      hiddenContainer.appendChild(element);
+      document.body.appendChild(hiddenContainer);
 
       const opt = {
         margin: [0.3, 0.3, 0.3, 0.3],
         filename: `รายงานรอบการทำข้อสอบ_${name}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: true },
+        html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0 },
         jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
       };
 
       html2pdf().set(opt).from(element).save().then(() => {
         btn.disabled = false;
         btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
+        document.body.removeChild(hiddenContainer);
       }).catch(err => {
         console.error("PDF Export Error:", err);
         alert("เกิดข้อผิดพลาดในการดาวน์โหลด PDF");
         btn.disabled = false;
         btn.innerText = "📄 ดาวน์โหลด PDF รายงานฉบับเต็ม";
+        if (document.body.contains(hiddenContainer)) {
+          document.body.removeChild(hiddenContainer);
+        }
       });
     }
 
