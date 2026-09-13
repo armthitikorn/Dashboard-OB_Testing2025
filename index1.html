@@ -284,7 +284,7 @@
     }
 
     // กำหนดให้เป็น Window Function เพื่อให้ปุ่มในตารางเรียกใช้ได้
-    window.openCandidateReport = async function(c) {
+window.openCandidateReport = async function(c) {
       const modalContent = document.getElementById("modalReportContent");
 
       let quizRows = "";
@@ -316,13 +316,36 @@
         c.subjectiveTests.forEach((sub, subIdx) => {
           let ansList = "";
           const answers = sub.answers;
+
+          function renderAnswerItem(qIdx, ansItem) {
+            const qText = QUESTIONS_LIST[qIdx] || `คำถามข้อที่ ${qIdx + 1}`;
+            const val = (typeof ansItem === 'object' && ansItem !== null)
+              ? (ansItem.answer || ansItem.value || JSON.stringify(ansItem))
+              : ansItem;
+            return `<div style="margin-bottom:6px; font-size:0.85rem;"><strong style="color:#007acc;">${qText}</strong><br><span style="color:#333;">ตอบ: ${val || '-'}</span></div>`;
+          }
+
           if (Array.isArray(answers)) {
-            ansList = answers.map((ansItem, qIdx) => {
-              const qText = QUESTIONS_LIST[qIdx] || `คำถามข้อที่ ${qIdx + 1}`;
-              const val = (typeof ansItem === 'object' && ansItem !== null) ? (ansItem.answer || ansItem.value || JSON.stringify(ansItem)) : ansItem;
-              return `<div style="margin-bottom:6px; font-size:0.85rem;"><strong style="color:#007acc;">${qText}</strong><br><span style="color:#333;">ตอบ: ${val || '-'}</span></div>`;
+            // รูปแบบเดิม: answers เป็น array
+            ansList = answers.map((ansItem, qIdx) => renderAnswerItem(qIdx, ansItem)).join("");
+          } else if (answers && typeof answers === 'object') {
+            // รูปแบบจริงจาก Supabase: answers เป็น object เช่น {"q1":"...","q2":"...",...}
+            const sortedKeys = Object.keys(answers).sort((a, b) => {
+              const numA = parseInt(a.replace(/\D/g, '')) || 0;
+              const numB = parseInt(b.replace(/\D/g, '')) || 0;
+              return numA - numB;
+            });
+            ansList = sortedKeys.map(key => {
+              const match = key.match(/\d+/);
+              const qIdx = match ? parseInt(match[0]) - 1 : 0;
+              return renderAnswerItem(qIdx, answers[key]);
             }).join("");
           }
+
+          if (!ansList) {
+            ansList = '<p style="color:#888; font-size:0.85rem;">ไม่มีข้อมูลคำตอบ</p>';
+          }
+
           subjectiveHTML += `<div style="background:#f8fafc; border:1px solid #cbd5e1; padding:10px; border-radius:6px; margin-bottom:8px;"><strong style="font-size:0.9rem; color:#1e293b;">รอบเวลา: ${new Date(sub.date).toLocaleString('th-TH')}</strong><div style="margin-top:6px;">${ansList}</div></div>`;
         });
       }
