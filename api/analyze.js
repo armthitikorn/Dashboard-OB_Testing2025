@@ -3,20 +3,35 @@
 // Environment Variables ที่ต้องตั้งใน Vercel:
 //   GEMINI_API_KEY   = key จากโปรเจกต์ AI Studio ที่ "ไม่ผูก billing" (free tier)
 //   GEMINI_MODEL     = model ID ของรุ่น Flash-Lite ตามที่แสดงใน AI Studio (ไม่บังคับ)
-//   ALLOWED_ORIGIN   = โดเมนของแดชบอร์ด (ไม่บังคับ)
+//   ALLOWED_ORIGIN   = โดเมนอื่นที่อนุญาตให้เรียก API นี้ เช่น https://example.com (ไม่บังคับ)
 
 const DEFAULT_MODEL = 'gemini-3.5-flash-lite'; // ตรวจชื่อจริงใน AI Studio แล้วตั้ง GEMINI_MODEL ให้ตรง
-const DEFAULT_ORIGIN = 'https://dashboard-ob-testing2025.vercel.app';
 const MAX_ATTEMPTS = 3;
 
 module.exports = async function handler(req, res) {
-  // ---------- CORS (จำกัดเฉพาะโดเมนแดชบอร์ด) ----------
-  const allowedOrigin = process.env.ALLOWED_ORIGIN || DEFAULT_ORIGIN;
+  // ---------- CORS ----------
+  // อนุญาตเมื่อหน้าเว็บถูกเสิร์ฟจากโดเมนเดียวกับ API นี้ (ทุก URL ของโปรเจกต์ Vercel)
+  // และเพิ่มโดเมนอื่นได้ผ่าน ALLOWED_ORIGIN (คั่นด้วยเครื่องหมายจุลภาค)
   const requestOrigin = req.headers.origin;
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const extraOrigins = (process.env.ALLOWED_ORIGIN || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  let originAllowed = true; // ไม่มี Origin = ไม่ใช่คำขอข้ามโดเมนจากเบราว์เซอร์ ปล่อยผ่าน
+  if (requestOrigin) {
+    try {
+      originAllowed =
+        new URL(requestOrigin).host === host || extraOrigins.includes(requestOrigin);
+    } catch (e) {
+      originAllowed = false;
+    }
+  }
 
   res.setHeader('Vary', 'Origin');
-  if (requestOrigin && requestOrigin === allowedOrigin) {
-    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  if (requestOrigin && originAllowed) {
+    res.setHeader('Access-Control-Allow-Origin', requestOrigin);
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   }
@@ -29,10 +44,8 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // ถ้ามี Origin ส่งมาและไม่ตรงกับโดเมนที่อนุญาต ให้ปฏิเสธ
-  // (การเรียกจากหน้าเว็บโดเมนเดียวกันบางกรณีไม่ส่ง Origin จึงปล่อยผ่าน)
-  if (requestOrigin && requestOrigin !== allowedOrigin) {
-    return res.status(403).json({ error: 'Origin not allowed' });
+  if (!originAllowed) {
+    return res.status(403).json({ error: `Origin not allowed: ${requestOrigin}` });
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
