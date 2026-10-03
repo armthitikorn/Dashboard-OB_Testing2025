@@ -1,160 +1,330 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ลงทะเบียนเข้าสู่ระบบ</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard ประเมินผลพนักงาน (ทีม Tele)</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #2563eb; --bg: #f8fafc; }
+        body { font-family: 'Sarabun', sans-serif; background: var(--bg); margin: 0; display: flex; height: 100vh; }
+        
+        /* Sidebar */
+        .sidebar { width: 350px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; }
+        .p-4 { padding: 1.5rem; }
+        .search-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px; box-sizing: border-box; }
+        .user-list { flex: 1; overflow-y: auto; }
+        .user-item { padding: 15px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: 0.2s; }
+        .user-item:hover { background: #f1f7ff; }
+        .user-item.active { background: #eef2ff; border-left: 4px solid var(--primary); }
 
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      background: linear-gradient(-45deg, #6ec6ff, #b388ff, #81d4fa, #ce93d8);
-      background-size: 400% 400%;
-      animation: gradientBG 15s ease infinite;
-      font-family: 'Segoe UI', sans-serif;
-    }
+        /* Main Content */
+        .main { flex: 1; overflow-y: auto; padding: 30px; }
+        .card { background: white; border-radius: 12px; padding: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .section-box { border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        
+        /* ปรับปรุงขนาดช่องเลือกคะแนน */
+        .score-input { padding: 6px 12px; border-radius: 6px; border: 1px solid #cbd5e1; font-family: 'Sarabun', sans-serif; font-size: 15px; background-color: #fff; cursor: pointer; }
+        .btn-export { background: #10b981; color: white; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
+        .btn-export:hover { background: #059669; }
+        audio { width: 100%; margin-top: 10px; }
 
-    @keyframes gradientBG {
-      0% {background-position: 0% 50%;}
-      50% {background-position: 100% 50%;}
-      100% {background-position: 0% 50%;}
-    }
+        /* ปุ่มย้อนกลับไปหน้าก่อนหน้า */
+        .btn-back { display: block; text-align: center; text-decoration: none; background: #e2e8f0; color: #1e293b; padding: 10px 14px; border-radius: 8px; font-weight: 600; margin-bottom: 15px; transition: background 0.2s; }
+        .btn-back:hover { background: #cbd5e1; }
 
-    .card {
-      border-radius: 1rem;
-      animation: fadeInUp 1s ease;
-    }
-
-    @keyframes fadeInUp {
-      from {
-        opacity: 0;
-        transform: translateY(30px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .form-control:focus, .form-select:focus {
-      box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-    }
-
-    .btn-success {
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-
-    .btn-success:hover {
-      transform: scale(1.03);
-      box-shadow: 0 0 10px rgba(40, 167, 69, 0.5);
-    }
-
-    #messageBox {
-      transition: all 0.3s ease;
-    }
-  </style>
-
-  <script type="module">
-    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
-
-    const supabaseUrl = 'https://wzwyotzzxycqfwercakh.supabase.co';
-    const supabaseKey = 'YOUR_ANON_KEY';
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    function showMessage(text, isError = false) {
-      const messageBox = document.getElementById('messageBox');
-      messageBox.textContent = text;
-      messageBox.style.display = 'block';
-      messageBox.className = isError ? 'alert alert-danger mt-3' : 'alert alert-success mt-3';
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-      const form = document.getElementById('registerForm');
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-
-        const name = document.getElementById('name').value;
-        const email = document.getElementById('email').value;
-        const department = document.getElementById('department').value;
-        const experience = document.getElementById('experience').value; // ดึงค่าประสบการณ์
-
-        if (!email) {
-          showMessage('กรุณากรอกอีเมล', true);
-          return;
-        }
-
-        showMessage('กำลังตรวจสอบ...', false);
-
-        try {
-          const { data: userData } = await supabase
-            .from('users')
-            .select('*')
-            .eq('email', email)
-            .single();
-
-          if (userData) {
-            showMessage('เข้าสู่ระบบสำเร็จ! กำลังนำทาง...', false);
-            // ส่งค่าไปยังหน้าสรุปผ่าน URL Parameter
-            setTimeout(() => {
-              window.location.href = `index2.html?email=${encodeURIComponent(email)}`;
-            }, 1500);
-            return;
-          }
-
-          // บันทึกข้อมูลรวมถึง experience ลง Supabase
-          await supabase.from('users').insert([
-            { email, full_name: name, department, experience }
-          ]);
-          
-          showMessage('ลงทะเบียนสำเร็จ! กำลังนำทาง...', false);
-          // ส่งค่าไปยังหน้าสรุปผ่าน URL Parameter
-          setTimeout(() => {
-            window.location.href = `index1.html?email=${encodeURIComponent(email)}`;
-          }, 1500);
-
-        } catch (err) {
-          console.error(err);
-          showMessage(`เกิดข้อผิดพลาด: ${err.message}`, true);
-        }
-      });
-    });
-  </script>
+        /* สลับโหมด Chatbot / Speak Bot */
+        .mode-toggle { display: flex; gap: 6px; margin-bottom: 15px; background: #f1f5f9; padding: 4px; border-radius: 10px; }
+        .mode-btn { flex: 1; padding: 9px 8px; border: none; border-radius: 8px; background: transparent; color: #475569; font-family: 'Sarabun', sans-serif; font-size: 15px; font-weight: 600; cursor: pointer; }
+        .mode-btn.active { background: var(--primary); color: #fff; }
+    </style>
 </head>
 <body>
-  <div class="container d-flex justify-content-center align-items-center vh-100">
-    <div class="card shadow-lg p-4" style="width: 100%; max-width: 420px;">
-      <h3 class="text-center mb-4 text-primary"><i class="bi bi-person-plus-fill me-2"></i>สรุปผลการทำแบบทดสอบ</h3>
-      <form id="registerForm">
-        <div class="mb-3">
-          <label for="name" class="form-label">ชื่อ-นามสกุล:</label>
-          <input type="text" id="name" name="name" class="form-control" required>
+
+    <div class="sidebar">
+        <div class="p-4">
+            <a href="index.html" class="btn-back">← กลับหน้าก่อนหน้า</a>
+            <div class="mode-toggle">
+                <button id="modeChat" class="mode-btn active" onclick="setMode('chat')">🤖 Chatbot</button>
+                <button id="modeSpeak" class="mode-btn" onclick="setMode('speak')">🎤 Speak Bot</button>
+            </div>
+            <h2 style="margin:0 0 15px 0; color:var(--primary);">รายชื่อพนักงาน</h2>
+            <input type="text" id="searchName" class="search-input" placeholder="ค้นหาชื่อพนักงาน..." oninput="filterList()">
+            <input type="date" id="searchDate" class="search-input" onchange="filterList()">
         </div>
-        <div class="mb-3">
-          <label for="email" class="form-label">อีเมล:</label>
-          <input type="email" id="email" name="email" class="form-control" required>
-        </div>
-        <div class="mb-3">
-          <label for="department" class="form-label">แผนก:</label>
-          <input type="text" id="department" name="department" class="form-control">
-        </div>
-        <!-- เพิ่มช่องกรอกประสบการณ์ -->
-        <div class="mb-3">
-          <label for="experience" class="form-label">ประสบการณ์ทำงาน:</label>
-          <select id="experience" name="experience" class="form-select" required>
-            <option value="" selected disabled>-- เลือกประสบการณ์ --</option>
-            <option value="น้อยกว่า 1 ปี">น้อยกว่า 1 ปี</option>
-            <option value="1 - 3 ปี">1 - 3 ปี</option>
-            <option value="3 - 5 ปี">3 - 5 ปี</option>
-            <option value="มากกว่า 5 ปี">มากกว่า 5 ปี</option>
-          </select>
-        </div>
-        <button type="submit" class="btn btn-success w-100"><i class="bi bi-box-arrow-in-right me-2"></i>เข้าสู่ระบบ</button>
-      </form>
-      <div id="messageBox" style="display:none;"></div>
+        <div id="userList" class="user-list"></div>
     </div>
-  </div>
+
+    <div class="main">
+        <div id="emptyState" style="text-align:center; margin-top:100px; color:#94a3b8;">
+            <h2>กรุณาเลือกพนักงานจากแถบด้านซ้าย</h2>
+        </div>
+
+        <div id="evalCard" class="card" style="display:none;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+                <div>
+                    <h1 id="displayName" style="margin:0;">-</h1>
+                    <p id="displayId" style="color:#64748b; margin:5px 0; font-size:0.9rem;"></p>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:1.5rem; font-weight:bold; color:var(--primary);">คะแนนรวม: <span id="totalScore">0</span> / <span id="maxScore">25</span></div>
+                </div>
+            </div>
+
+            <div id="audioSections"></div>
+
+            <div style="margin-top:20px;">
+                <label><b>ข้อเสนอแนะเพิ่มเติม:</b></label>
+                <textarea id="feedback" style="width:100%; height:80px; margin-top:10px; border-radius:8px; border:1px solid #cbd5e1; padding:10px; font-family:inherit;" placeholder="พิมพ์ข้อเสนอแนะสำหรับการประเมินครั้งนี้..."></textarea>
+            </div>
+
+            <div style="margin-top:20px; text-align:right;">
+                <button class="btn-export" onclick="exportToExcel()">📊 ดาวน์โหลดรายงาน Excel</button>
+            </div>
+        </div>
+    </div>
+
+<script type="module">
+    const supabaseUrl = 'https://wzwyotzzxycqfwercakh.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno';
+    const supabase = window.supabase.createClient(supabaseUrl, supabaseKey, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+
+    // แถวจากหน้า Speak (Voice HD) มี insurance_type ขึ้นต้นด้วย "Voice HD" ส่วนแชทบอทเก็บชื่อแบบประกัน
+    const isSpeakRow = r => /voice\s*hd/i.test(r.insurance_type || '');
+    const speakPartOf = r => { const m = /part\s*(\d+)/i.exec(r.insurance_type || ''); return m ? parseInt(m[1], 10) : null; };
+
+    const MODES = {
+        chat: {
+            label: 'Chatbot', max: 25,
+            steps: [
+                { key: 'S1', part: 1, name: 'เปิดตัว / แนะนำตัว', short: 'S1 (แนะนำตัว)' },
+                { key: 'S2', part: 2, name: 'ตอบคำถามลูกค้า', short: 'S2 (ตอบคำถาม)' },
+                { key: 'S3', part: 3, name: 'ปิดการขาย / ตอบข้อโต้แย้ง', short: 'S3 (ปิดการขาย)' },
+                { key: 'S4', part: 4, name: 'ซักประวัติสุขภาพ', short: 'S4 (ซักประวัติ)' },
+                { key: 'S5', part: 5, name: 'ลงทะเบียน', short: 'S5 (ลงทะเบียน)' }
+            ],
+            belongs: r => !isSpeakRow(r),
+            match: (r, s) => Number(r.part_number) === s.part
+        },
+        speak: {
+            label: 'Speak Bot', max: 15,
+            steps: [
+                { key: 'P1', part: 1, name: 'Part 1', short: 'P1' },
+                { key: 'P2', part: 2, name: 'Part 2', short: 'P2' },
+                { key: 'P3', part: 3, name: 'Part 3', short: 'P3' }
+            ],
+            belongs: r => isSpeakRow(r) && !/setup/i.test(r.insurance_type || ''),
+            match: (r, s) => speakPartOf(r) === s.part
+        }
+    };
+
+    let mode = 'chat';
+    let allRows = [];
+    let allSubmissions = [];
+    let currentEmployee = null;
+    let scores = {};
+
+    async function loadEmployeeList() {
+        // Supabase คืนสูงสุด 1,000 แถวต่อคำขอ จึงดึงทีละหน้าจนครบ
+        const data = [];
+        let error = null;
+        for (let from = 0; ; from += 1000) {
+            const res = await supabase
+                .from('submissions')
+                .select('user_id, name, created_at, insurance_type')
+                .not('audio_url', 'is', null)
+                .neq('audio_url', '')
+                .order('created_at', { ascending: false })
+                .range(from, from + 999);
+            if (res.error) { error = res.error; break; }
+            data.push(...res.data);
+            if (res.data.length < 1000) break;
+        }
+
+        if (error) {
+            console.error("❌ พบข้อผิดพลาด:", error.message);
+            document.getElementById('userList').innerHTML = `<div style="padding:10px; color:red;">Error: ${error.message}</div>`;
+            return;
+        }
+        allRows = data || [];
+        applyMode();
+    }
+
+    // เลือกรายชื่อตามโหมด (Chatbot / Speak Bot)
+    function applyMode() {
+        const map = new Map();
+        allRows.filter(MODES[mode].belongs).forEach(item => {
+            if (!map.has(item.user_id)) map.set(item.user_id, item);
+        });
+        allSubmissions = Array.from(map.values());
+        renderList(allSubmissions);
+        if (mode === 'speak' && allSubmissions.length === 0) {
+            const types = [...new Set(allRows.map(r => r.insurance_type || '(ว่าง)'))].slice(0, 12).join(' | ');
+            document.getElementById('userList').innerHTML =
+                `<div style="padding:15px; color:#b45309; font-size:0.85rem;">ไม่พบแถวของ Speak ที่มีไฟล์เสียง<br>ค่า insurance_type ที่พบในตาราง: ${types}</div>`;
+        }
+    }
+
+    window.setMode = (m) => {
+        mode = m;
+        document.getElementById('modeChat').classList.toggle('active', m === 'chat');
+        document.getElementById('modeSpeak').classList.toggle('active', m === 'speak');
+        currentEmployee = null;
+        document.getElementById('evalCard').style.display = 'none';
+        document.getElementById('emptyState').style.display = 'block';
+        document.getElementById('searchName').value = '';
+        applyMode();
+    };
+
+    function renderList(items) {
+        const listEl = document.getElementById('userList');
+        listEl.innerHTML = '';
+
+        if (!items || items.length === 0) {
+            listEl.innerHTML = '<div style="padding:20px; text-align:center; color:#94a3b8;">ไม่พบรายชื่อพนักงาน</div>';
+            return;
+        }
+
+        items.forEach(emp => {
+            const date = new Date(emp.created_at).toLocaleDateString('th-TH');
+            const item = document.createElement('div');
+            item.className = 'user-item';
+            const displayName = emp.name || `ID: ${emp.user_id.substring(0,8)}`;
+
+            item.innerHTML = `
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="background:#2563eb; color:white; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.8rem; flex-shrink:0;">
+                        ${displayName.charAt(0)}
+                    </div>
+                    <div style="overflow:hidden;">
+                        <strong style="display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${displayName}</strong>
+                        <small style="color:#64748b; font-size:0.75rem;">📅 ${date}</small>
+                    </div>
+                </div>
+            `;
+            item.onclick = () => {
+                document.querySelectorAll('.user-item').forEach(el => el.classList.remove('active'));
+                item.classList.add('active');
+                selectEmployee(emp);
+            };
+            listEl.appendChild(item);
+        });
+    }
+
+    window.filterList = () => {
+        const name = document.getElementById('searchName').value.toLowerCase();
+        const date = document.getElementById('searchDate').value;
+        const filtered = allSubmissions.filter(emp => {
+            const matchName = (emp.name || '').toLowerCase().includes(name);
+            const matchDate = !date || emp.created_at.includes(date);
+            return matchName && matchDate;
+        });
+        renderList(filtered);
+    }
+
+    async function selectEmployee(emp) {
+        currentEmployee = emp;
+        const cfg = MODES[mode];
+        scores = {};
+        cfg.steps.forEach(s => scores[s.key] = 0); // เริ่มที่ 0 ให้ผู้ประเมินเลือกคะแนนเอง
+        document.getElementById('totalScore').innerText = '0';
+        document.getElementById('maxScore').innerText = cfg.max;
+        document.getElementById('feedback').value = '';
+
+        document.getElementById('emptyState').style.display = 'none';
+        document.getElementById('evalCard').style.display = 'block';
+        document.getElementById('displayName').innerText = emp.name;
+        document.getElementById('displayId').innerText = `${cfg.label} | ID: ${emp.user_id}`;
+
+        const sectionsContainer = document.getElementById('audioSections');
+        sectionsContainer.innerHTML = '<div style="text-align:center; padding: 20px;">🔄 กำลังโหลดไฟล์เสียงทั้งหมด กรุณารอสักครู่...</div>';
+
+        // ดึงลิงก์เสียงจากตาราง submissions (ไม่ต้องพึ่งสิทธิ์ list ของ Storage)
+        const { data: rowsAll, error: rowsErr } = await supabase
+            .from('submissions')
+            .select('part_number, question_number, question_text, audio_url, insurance_type, created_at')
+            .eq('user_id', emp.user_id)
+            .not('audio_url', 'is', null)
+                .neq('audio_url', '')
+            .order('part_number', { ascending: true })
+            .order('created_at', { ascending: true });
+        if (rowsErr) console.error('❌ โหลดข้อมูลเสียงไม่สำเร็จ:', rowsErr.message);
+        const rows = (rowsAll || []).filter(cfg.belongs);
+        if (mode === 'speak' && rows.length === 0 && rowsAll && rowsAll.length > 0) {
+            console.warn('แถวของผู้ใช้นี้ไม่ตรงเงื่อนไข Speak:', [...new Set(rowsAll.map(r => r.insurance_type))]);
+        }
+
+        let html = '';
+        for (const s of cfg.steps) {
+            const audioFiles = rows.filter(r => cfg.match(r, s));
+
+            let audioTags = '';
+            if (audioFiles.length > 0) {
+                audioFiles.forEach((file, index) => {
+                    audioTags += `
+                        <div style="margin-top: 10px; padding: 10px; background-color: #f8fafc; border-radius: 8px;">
+                            <small style="color:#64748b; font-weight: bold;">🔊 ${file.question_text || ('ไฟล์เสียงที่ ' + (index + 1))}</small>
+                            <audio controls src="${file.audio_url}" style="width: 100%; margin-top: 5px; outline: none;"></audio>
+                        </div>
+                    `;
+                });
+            } else {
+                audioTags = '<p style="color:#94a3b8; margin-top: 15px;">ไม่พบไฟล์เสียงในหัวข้อนี้</p>';
+            }
+
+            html += `
+                <div class="section-box">
+                    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px dashed #e2e8f0; padding-bottom: 10px;">
+                        <span style="font-weight:600; font-size: 1.1em; color: var(--primary);">หัวข้อ ${s.key} : ${s.name} <span style="font-size: 0.8em; color: #64748b;">(${audioFiles.length} ไฟล์)</span></span>
+                        <div>
+                            <span style="margin-right: 10px; font-weight: bold; color: #333;">ให้คะแนน:</span>
+                            <select class="score-input" onchange="updateScore('${s.key}', this.value)">
+                                <option value="0">-- เลือกคะแนน --</option>
+                                <option value="1">1 - ต้องปรับปรุงเร่งด่วน</option>
+                                <option value="2">2 - ต้องปรับปรุง</option>
+                                <option value="3">3 - ปานกลาง</option>
+                                <option value="4">4 - ดี</option>
+                                <option value="5">5 - ดีเยี่ยม</option>
+                            </select>
+                        </div>
+                    </div>
+                    ${audioTags}
+                </div>
+            `;
+        }
+        sectionsContainer.innerHTML = html;
+    }
+
+    window.updateScore = (key, val) => {
+        scores[key] = parseInt(val) || 0;
+        const total = Object.values(scores).reduce((a, b) => a + b, 0);
+        document.getElementById('totalScore').innerText = total;
+    }
+
+    window.exportToExcel = () => {
+        const cfg = MODES[mode];
+        const row = {
+            "โหมด": cfg.label,
+            "ชื่อพนักงาน": currentEmployee.name,
+            "รหัสอ้างอิง (User ID)": currentEmployee.user_id,
+            "วันที่ส่งงาน": new Date(currentEmployee.created_at).toLocaleString('th-TH')
+        };
+        cfg.steps.forEach(s => row[s.short] = scores[s.key]);
+        row[`คะแนนรวม (เต็ม ${cfg.max})`] = document.getElementById('totalScore').innerText;
+        row["ข้อเสนอแนะเพิ่มเติม"] = document.getElementById('feedback').value;
+        row["วันที่ประเมิน"] = new Date().toLocaleString('th-TH');
+
+        const ws = XLSX.utils.json_to_sheet([row]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "สรุปผลการประเมิน");
+        XLSX.writeFile(wb, `สรุปประเมิน_${cfg.label}_${currentEmployee.name}.xlsx`);
+    }
+
+    window.onload = loadEmployeeList;
+</script>
 </body>
 </html>
