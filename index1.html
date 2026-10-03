@@ -482,6 +482,8 @@
       element.querySelectorAll('*').forEach(el => {
         el.style.overflowWrap = 'break-word';
         el.style.wordBreak = 'break-word';
+        el.style.letterSpacing = 'normal';
+        el.style.fontFamily = "'Sarabun', sans-serif";
       });
 
       const hiddenContainer = document.createElement('div');
@@ -501,10 +503,11 @@
           scale: 2, 
           useCORS: true, 
           logging: false, 
-          scrollY: 0,
-          letterRendering: true   // ✅ ช่วยเรื่องสระ/วรรณยุกต์ไทยไม่ให้ซ้อนทับกัน
+          scrollY: 0
+          // ❌ ลบ letterRendering ออก: ทำให้สระ/วรรณยุกต์ไทยถูกวาดทีละตัวอักษรแล้วซ้อนทับกัน
         },
-        jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+        jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.swot-card'] }
       };
 
       try {
